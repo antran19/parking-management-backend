@@ -1,165 +1,291 @@
-# SmartParking — Phân công Nhiệm vụ
+# SmartParking v2 — Phân công nhiệm vụ nhóm
 
-> Cập nhật: 18/05/2026 | Hiện tại: **TUẦN 1** (của 9 tuần)
-
----
-
-## 📌 TÌNH HÌNH HIỆN TẠI
-
-Minh An (Leader) đã code xong phần **lõi backend**: đăng nhập, xe vào bãi, xe ra bãi, thuật toán tìm chỗ đỗ tốt nhất, tính phí tự động. Code đã push lên GitHub branch `develop`.
-
-**Từ tuần 2, mỗi người bắt đầu làm phần của mình.**
+> Cập nhật: 24/05/2026 — Sau khi dọn DB, thêm ParkingPass, sửa Gate, xóa Slot
 
 ---
 
-## 👥 AI LÀM GÌ?
+## 1. Trạng thái hiện tại (đã hoàn thành ✅)
+
+### Backend — ĐÃ CÓ
+- [x] 5 roles: ADMIN, MANAGER, STAFF, DRIVER, SECURITY
+- [x] DataInitializer: 5 user mẫu + 5 cổng (2 main + 3 zone) + 6 zone + 3 tầng
+- [x] Entity: User, Building, Floor, Zone, Gate, ParkingSession, ParkingPass, Payment, Reservation, PricingRule, VehicleType, ExceptionLog
+- [x] ParkingSession → quản lý theo `zone_id` (đã xóa `slot_id`)
+- [x] Gate → phân biệt `MAIN_ENTRY/MAIN_EXIT/ZONE_BOTH`
+- [x] MonthlyPass → đổi tên `ParkingPass` (tháng/quý/năm)
+- [x] Check-in/Check-out service (zone-based)
+- [x] ZoneSuggestionService (gợi ý khu)
+- [x] PricingService (tính phí)
+- [x] JWT Auth + Login/Register
+- [x] WebSocket broadcast zone changes
+
+### Frontend — ĐÃ CÓ
+- [x] Login page (slideshow + animation)
+- [x] Staff: Dashboard, CheckIn, CheckOut, ParkingMap
+- [x] Driver: Dashboard, ParkingMap
+- [x] Admin: Dashboard (cơ bản)
+- [x] Manager: Dashboard (placeholder)
+- [x] DashboardLayout (sidebar + routing)
+
+### Đã xóa sạch
+- [x] Slot.java, SlotRepository, SlotAssignmentService, SlotMapService, SlotMapResponse, SlotController
+- [x] MonthlyPass.java → ParkingPass.java
 
 ---
 
-### 1. MINH AN (Leader)
+## 2. Nguyên tắc làm việc
 
-**Đã xong:** Toàn bộ phần lõi backend (đăng nhập, check-in/out, tính phí, tìm slot).
-
-**Tuần 2 làm gì:**
-- Tạo dữ liệu mẫu trong database (tòa nhà, tầng, slot, user mẫu) để cả nhóm test
-- Hướng dẫn từng người hiểu code
-- Review code khi mọi người gửi Pull Request
-
-**Từ tuần 3:** Hỗ trợ nhóm, sửa bug, kiểm tra chất lượng code.
-
----
-
-### 2. DUY TÙNG (Backend)
-
-**Phần bạn phụ trách:** Bảo mật + Đặt chỗ trước + Thanh toán
-
-**Tuần 2 — Việc đầu tiên (dễ, làm quen):**
-- [ ] Clone repo về máy, chạy project theo hướng dẫn trong README.md
-- [ ] Đọc hiểu 3 file bảo mật mà Leader đã viết (hỏi Leader nếu không hiểu)
-- [ ] Tạo chức năng **Đăng ký tài khoản**: người dùng mới nhập email + mật khẩu → hệ thống tạo tài khoản
-
-**Tuần 3:**
-- [ ] Tạo chức năng **Đặt chỗ trước**: Driver chọn slot → giữ chỗ 30 phút → nếu không đến thì tự hủy
-
-**Tuần 4–5:**
-- [ ] Tạo chức năng **Xử lý sự cố**: Staff ghi nhận khi xe mất thẻ, đậu sai chỗ, biển số không khớp
-
-**Tuần 6–7:**
-- [ ] Tạo chức năng **Thanh toán**: hiển thị QR code cho tài xế quét trả tiền
+1. Không dùng khái niệm `slot` trong code mới
+2. Dùng: `Zone`, `Gate (MAIN/ZONE)`, `ParkingSession`, `ParkingPass`, `QR`
+3. Driver vãng lai **không cần account**
+4. Account Driver dùng cho: đặt chỗ, vé tháng/quý/năm, lịch sử
+5. Camera/OCR giai đoạn đầu là **giả lập** (nhập biển số thủ công)
+6. Push branch riêng, **không push thẳng main/develop**
+7. Không commit `node_modules`, `target`, `.env`
 
 ---
 
-### 3. KHẮC TOÀN (Backend)
-
-**Phần bạn phụ trách:** Database + Báo cáo + Quản trị
-
-**Tuần 2 — Việc đầu tiên (dễ, làm quen):**
-- [ ] Clone repo về máy, chạy project theo hướng dẫn trong README.md
-- [ ] Mở pgAdmin (phần mềm xem database) → kết nối vào PostgreSQL → xem các bảng đã tạo
-- [ ] Đọc 13 file Entity (trong thư mục `entity/`) → **vẽ lại sơ đồ quan hệ các bảng** (ERD) bằng draw.io hoặc vẽ tay
-- [ ] Viết file SQL tạo dữ liệu mẫu (1 tòa nhà, 3 tầng, 20 slot, vài user)
-
-**Tuần 3:**
-- [ ] Viết thêm các câu truy vấn (query): đếm số xe theo ngày, tổng doanh thu, tỷ lệ slot đầy
-
-**Tuần 4–5:**
-- [ ] Tạo chức năng **Báo cáo cho Manager**: xem doanh thu ngày/tháng, giờ cao điểm, loại xe phổ biến
-
-**Tuần 6–7:**
-- [ ] Tạo chức năng **Quản trị**: Admin thêm/sửa/xóa tài khoản nhân viên, thay đổi bảng giá
+## 3. Phân công theo thành viên
 
 ---
 
-### 4. TÁ THIÊN (Frontend)
+### 3.1 MINH AN — Leader / Backend Core
 
-**Phần bạn phụ trách:** Giao diện web chính (React)
+**Vai trò:** Kiến trúc, review code, integration, database
 
-**Tuần 2 — Việc đầu tiên:**
-- [ ] Clone repo về máy, đọc file `docs/API_SPEC.md` để hiểu Backend trả về gì
-- [ ] Tạo project React mới (dùng Vite) trong thư mục `frontend/`
-- [ ] Tạo layout cơ bản: thanh menu bên trái + header trên cùng
-- [ ] Tạo file gọi API: mỗi lần gọi Backend đều tự đính kèm token đăng nhập
+#### Đã hoàn thành
+- [x] Database schema v2 (zone-based)
+- [x] Xóa Slot, đổi MonthlyPass → ParkingPass
+- [x] Sửa Gate (MAIN/ZONE)
+- [x] ParkingSessionService (check-in/out theo zone)
+- [x] DataInitializer (5 role, 5 cổng, 6 zone)
 
-**Tuần 3:**
-- [ ] Làm **trang Đăng nhập**: ô nhập email + mật khẩu → bấm Login → lưu token → chuyển trang
-
-**Tuần 4–5:**
-- [ ] Làm **trang Sơ đồ bãi xe**: hiển thị lưới slot (xanh = trống, đỏ = có xe), tự cập nhật khi có xe vào/ra
-- [ ] Làm **trang Check-in**: Staff nhập biển số → bấm Check-in → hiển thị "Đến Tầng B1 - Ô B1-A01"
-- [ ] Làm **trang Check-out**: Staff nhập biển số → hiển thị phí → bấm Xác nhận
-
-**Tuần 6–7:**
-- [ ] Làm đẹp giao diện, thêm hiệu ứng, responsive (xem được trên điện thoại)
+#### Cần làm tiếp
+- [ ] Review PR của thành viên
+- [ ] Tích hợp FE + BE (test luồng check-in/out end-to-end)
+- [ ] Viết `SMARTPARKING_V2_REQUIREMENTS.md` bản chính thức
+- [ ] Hỗ trợ member khi bị stuck
+- [ ] Chuẩn bị demo + báo cáo cuối
 
 ---
 
-### 5. NGỌC QUẢNG (Frontend + QA)
+### 3.2 DUY TÙNG — Backend Auth / Driver / Payment
 
-**Phần bạn phụ trách:** Giao diện cho Driver + Dashboard Manager + Kiểm thử
+**Vai trò:** Bảo mật, Driver features, thanh toán
 
-**Tuần 2 — Việc đầu tiên:**
-- [ ] Clone repo về máy, đọc file `SRS_ParkingSystem.md` để hiểu hệ thống
-- [ ] Mở Figma → vẽ phác thảo giao diện 5 màn hình: Đăng nhập, Sơ đồ bãi xe, Check-in, Dashboard, Trang Driver
-- [ ] Liệt kê tất cả trang web cần làm → gửi nhóm review
+#### Cần làm
 
-**Tuần 3:**
-- [ ] Làm **trang xem bãi xe (công khai)**: ai cũng vào xem được, hiển thị còn bao nhiêu slot trống
-- [ ] Làm **trang Đăng ký**: Driver đăng ký tài khoản mới
+**Auth (ưu tiên cao):**
+- [ ] Kiểm tra JWT trả đúng 5 role
+- [ ] API đổi mật khẩu
+- [ ] API xem/sửa thông tin cá nhân Driver
 
-**Tuần 4–5:**
-- [ ] Làm **trang Đặt chỗ trước**: Driver xem slot trống → chọn slot → giữ chỗ
-- [ ] Làm **trang Phiên gửi xe**: Driver xem xe đang đỗ ở đâu, bao lâu, phí tạm tính
+**Driver Booking (ưu tiên cao):**
+- [ ] API `POST /api/v1/driver/reservations` — đặt chỗ theo zone
+- [ ] API `GET /api/v1/driver/reservations` — xem đặt chỗ của mình
+- [ ] API `DELETE /api/v1/driver/reservations/{id}` — hủy đặt chỗ
+- [ ] Khi check-in, check reservation → driverType = `PRE_BOOKED`
 
-**Tuần 6–7:**
-- [ ] Làm **Dashboard cho Manager**: biểu đồ doanh thu, thống kê lượt xe
-- [ ] Làm **trang Thanh toán QR**: hiển thị mã QR để tài xế quét
+**ParkingPass — Vé gửi xe (ưu tiên TB):**
+- [ ] API `POST /api/v1/driver/passes` — mua vé (MONTHLY/QUARTERLY/YEARLY)
+- [ ] API `GET /api/v1/driver/passes` — xem vé đang active
+- [ ] Khi check-in, check pass theo biển số → driverType = `SUBSCRIBER`
 
-**Tuần 8:**
-- [ ] Kiểm thử toàn bộ hệ thống, viết danh sách lỗi, test lại sau khi sửa
+**Payment (ưu tiên TB):**
+- [ ] API thanh toán giả lập: CASH / BANK_TRANSFER
+- [ ] Tạo Payment record khi check-out hoặc mua vé
 
----
-
-## 📅 LỊCH TRÌNH 9 TUẦN
-
-| Tuần | Mục tiêu | Ai làm gì |
-|------|---------|-----------|
-| **1** ✅ | Backend lõi xong | Minh An đã xong |
-| **2** | Cả nhóm bắt đầu | Tùng: đăng ký, Toàn: ERD + data, Thiên: setup React, Quảng: Figma |
-| **3** (Chấm lần 1) | Demo được: login + check-in + check-out | Thiên: trang Login, Quảng: trang xem bãi xe |
-| **4–5** | Làm thêm tính năng | Sơ đồ bãi xe, đặt chỗ, báo cáo, xử lý sự cố |
-| **6–7** (Chấm lần 2) | Tích hợp FE + BE | Dashboard, thanh toán, quản trị, làm đẹp UI |
-| **8** | Hoàn thiện | Test, sửa bug, tối ưu |
-| **9** (Chấm cuối) | Bảo vệ | Cả nhóm demo + trả lời câu hỏi |
+#### Kết quả cần có
+- Driver đăng ký/login ✅, đặt chỗ, mua vé
+- Check-in nhận biết: vãng lai / đặt trước / có vé
 
 ---
 
-## 🚀 BẮT ĐẦU NHƯ THẾ NÀO?
+### 3.3 KHẮC TOÀN — Backend Redis / Zone API / Report
 
-**Tất cả mọi người, tuần 2 làm 3 bước này trước:**
+**Vai trò:** Redis, zone counter, thống kê, báo cáo Manager
 
-```
-Bước 1: Cài Git, cài Docker Desktop
-Bước 2: Mở Terminal, gõ:
-         git clone https://github.com/antran19/parking-management-backend.git
-         cd parking-management-backend
-         git checkout develop
-Bước 3: Đọc file README.md → làm theo hướng dẫn chạy project
-```
+#### Cần làm
 
-**Nếu bị lỗi hoặc không hiểu → hỏi Minh An.**
+**Redis Zone Counter (ưu tiên cao):**
+- [ ] Service `RedisZoneCounterService`:
+  - `INCR zone:count:{zoneId}` — xe vào
+  - `DECR zone:count:{zoneId}` — xe ra
+  - `GET zone:count:{zoneId}` — check còn chỗ
+- [ ] Sync Redis ← DB khi app start
+- [ ] Distributed lock khi zone gần đầy:
+  - `SETNX zone:lock:{zoneId} sessionId 30s`
+
+**Redis Cache (ưu tiên TB):**
+- [ ] Cache QR session: `SET session:qr:{code} {data} EX 86400`
+- [ ] Cache monthly pass: `SET pass:{licensePlate} {data} EX 2592000`
+- [ ] Lookup cache trước DB khi quét QR
+
+**API Zone (ưu tiên cao):**
+- [ ] `GET /api/v1/zones?buildingId=` — danh sách zone + còn bao nhiêu chỗ
+- [ ] `GET /api/v1/zones/{id}` — chi tiết 1 zone
+
+**API Report cho Manager (ưu tiên TB):**
+- [ ] `GET /api/v1/manager/dashboard` — tổng quan:
+  - Tổng xe đang trong bãi
+  - Số lượt vào/ra hôm nay
+  - Doanh thu hôm nay
+  - Zone nào gần đầy
+- [ ] `GET /api/v1/manager/reports/revenue?from=&to=` — doanh thu theo khoảng
+
+#### Kết quả cần có
+- Redis zone counter hoạt động
+- Manager xem dashboard được
+- Zone API cho FE hiển thị sơ đồ
 
 ---
 
-## ❓ CÂU HỎI THƯỜNG GẶP
+### 3.4 TÁ THIÊN — Frontend Staff / Security
 
-**Q: Tôi chưa biết Spring Boot / React, làm sao code?**
-A: Đọc file code Leader đã viết + Google + hỏi Leader. Không ai biết hết từ đầu.
+**Vai trò:** Giao diện Staff + Security
 
-**Q: Backend và Frontend khác nhau chỗ nào?**
-A: Backend = code Java xử lý logic + database (chạy ngầm, không có giao diện). Frontend = code React tạo giao diện web (nút bấm, form, bảng).
+#### Đã có (cần sửa lại cho đúng flow v2)
+- [x] StaffDashboard.jsx
+- [x] StaffCheckIn.jsx
+- [x] StaffCheckOut.jsx
+- [x] StaffMapping.jsx
 
-**Q: Tại sao tôi phải clone repo Backend trong khi tôi làm Frontend?**
-A: Vì bạn cần chạy Backend trên máy để test. Frontend gọi API vào Backend → nếu Backend không chạy → Frontend không hoạt động.
+#### Cần làm
 
-**Q: Pull Request (PR) là gì?**
-A: Khi code xong 1 chức năng → bạn push lên GitHub → tạo PR (yêu cầu merge) → Leader review → approve → code của bạn được gộp vào project chính.
+**Staff Check-in v2 (ưu tiên cao):**
+- [ ] Form: nhập biển số (hoặc giả lập camera OCR)
+- [ ] Chọn loại xe (xe máy / ô tô)
+- [ ] Hiển thị zone được gợi ý (gọi API)
+- [ ] Khi confirm → tạo session → hiển thị QR code
+- [ ] Phân biệt 3 loại driver khi check-in:
+  - Vãng lai → nhập biển số, scan mới
+  - Đặt trước → nhập mã reservation
+  - Có vé → scan biển số, tự nhận diện
+
+**Staff Check-out v2 (ưu tiên cao):**
+- [ ] Quét QR hoặc nhập biển số
+- [ ] Hiện: thời gian gửi, loại xe, zone, giá tiền
+- [ ] Chọn phương thức thanh toán (tiền mặt / chuyển khoản)
+- [ ] Confirm → session completed
+
+**Security UI (ưu tiên TB):**
+- [ ] Trang Security Dashboard (danh sách sự cố)
+- [ ] Form báo cáo sự cố mới (mất QR, sai biển số, xe quá hạn)
+- [ ] Nút "Mở cổng thủ công"
+- [ ] Bảng log xe ra/vào gần đây
+
+#### Kết quả cần có
+- Staff check-in/out chạy đúng flow 2 cổng
+- Security có UI xử lý ngoại lệ cơ bản
+
+---
+
+### 3.5 NGỌC QUẢNG — Frontend Driver / Admin / QA
+
+**Vai trò:** Driver UI, Admin UI, kiểm thử
+
+#### Đã có (cần sửa/nâng cấp)
+- [x] DriverDashboard.jsx
+- [x] DriverMapping.jsx
+- [x] AdminDashboard.jsx
+
+#### Cần làm
+
+**Driver UI (ưu tiên cao):**
+- [ ] Trang xem zone còn chỗ (gọi API zones)
+- [ ] Trang đặt chỗ trước (chọn zone + loại xe + thời gian)
+- [ ] Trang mua vé tháng/quý/năm (chọn biển số + loại xe + gói)
+- [ ] Trang lịch sử gửi xe (danh sách session cũ)
+- [ ] Trang xem vé đang active
+
+**Admin UI (ưu tiên TB):**
+- [ ] Trang quản lý user (CRUD: thêm/sửa/xóa/khóa tài khoản)
+- [ ] Trang phân quyền (đổi role)
+- [ ] Trang quản lý zone/tầng (xem capacity, sửa)
+
+**Manager UI (ưu tiên TB):**
+- [ ] Trang dashboard thống kê (gọi API report)
+- [ ] Biểu đồ doanh thu, lượt xe
+
+**QA (ưu tiên thấp — cuối sprint):**
+- [ ] Test case 5 luồng chính:
+  1. Staff check-in xe vãng lai
+  2. Staff check-out xe vãng lai
+  3. Driver đặt chỗ trước
+  4. Driver mua vé tháng
+  5. Security xử lý mất QR
+- [ ] Ghi bug list + gửi nhóm
+
+#### Kết quả cần có
+- Driver có UI đặt chỗ, mua vé, lịch sử
+- Admin quản lý user được
+- Có test case + bug list
+
+---
+
+## 4. Lịch trình MVP
+
+| Phase | Mục tiêu | Thời gian |
+|-------|---------|-----------|
+| ✅ Phase 1 | Schema v2, dọn code cũ | Đã xong |
+| Phase 2 | Backend: Redis, Reservation, Pass API | Tuần này |
+| Phase 3 | Frontend: Staff check-in/out v2, Driver booking | Tuần này |
+| Phase 4 | Tích hợp FE + BE, test luồng chính | Tuần sau |
+| Phase 5 | Security UI, Admin UI, Manager report | Tuần sau |
+| Phase 6 | Fix bug, polish UI, chuẩn bị demo | Trước demo |
+
+---
+
+## 5. MVP bắt buộc để demo
+
+### Phải có:
+- [x] Login 5 role
+- [ ] Staff check-in xe vãng lai (cổng chính → cổng tầng)
+- [ ] Hệ thống gợi ý zone còn chỗ
+- [ ] Sinh QR cho session
+- [ ] Staff check-out (cổng tầng → cổng chính → thanh toán)
+- [ ] Tính phí tự động
+- [ ] Redis zone counter tăng/giảm
+- [ ] Driver đặt chỗ trước
+- [ ] Driver mua vé tháng
+- [ ] Security xử lý mất QR cơ bản
+- [ ] Manager xem zone capacity
+
+### Chưa bắt buộc MVP:
+- [ ] OCR camera thật
+- [ ] VNPay/Momo thật
+- [ ] AI nhận diện loại xe từ ảnh
+- [ ] Auto barrier thật
+- [ ] Dashboard biểu đồ nâng cao
+
+---
+
+## 6. FAQ cho team
+
+**Q: Có còn dùng Slot không?**
+A: Không. Đã xóa hết. V2 quản lý theo `Zone/Floor`.
+
+**Q: Staff và Security khác gì?**
+A: Staff = luồng bình thường (check-in/out). Security = ngoại lệ (mất QR, sai biển, mở cổng thủ công).
+
+**Q: Driver vãng lai có cần account không?**
+A: Không. Chỉ cần biển số. Account Driver dùng cho đặt chỗ, vé, lịch sử.
+
+**Q: MonthlyPass đổi tên gì?**
+A: `ParkingPass` — bao gồm MONTHLY/QUARTERLY/YEARLY.
+
+**Q: Gate có mấy loại?**
+A: 6 loại: `MAIN_ENTRY, MAIN_EXIT, MAIN_BOTH, ZONE_ENTRY, ZONE_EXIT, ZONE_BOTH`.
+
+**Q: Redis dùng làm gì?**
+A: Zone counter (đếm xe), distributed lock (chống race condition), QR cache (lookup nhanh), pass cache (check vé tháng nhanh).
+
+---
+
+## 7. Quy tắc Git/PR
+
+- Không push thẳng vào `main` / `develop`
+- Mỗi người tạo branch: `feature/tên-chức-năng`
+- PR ghi rõ: làm gì, test thế nào, ảnh UI nếu có
+- Leader (An) review trước khi merge
+- Không commit: `node_modules/`, `target/`, `.env`

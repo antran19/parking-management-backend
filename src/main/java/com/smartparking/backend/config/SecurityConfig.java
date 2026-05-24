@@ -37,8 +37,11 @@ public class SecurityConfig {
             "/api/v1/public/**",         // Xem thông tin bãi xe (không cần đăng nhập)
             "/ws/**",                    // WebSocket endpoint
             "/actuator/health",
-            "/swagger-ui/**",
-            "/v3/api-docs/**"
+            "/swagger-ui.html",          // Swagger redirect
+            "/swagger-ui/**",            // Swagger UI static files
+            "/v3/api-docs/**",           // OpenAPI JSON/YAML
+            "/swagger-resources/**",     // Swagger resources
+            "/webjars/**"                // Swagger webjars
     };
 
     @Bean
@@ -52,6 +55,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/v1/manager/**").hasAnyRole("ADMIN", "MANAGER")
                 .requestMatchers("/api/v1/staff/**").hasAnyRole("ADMIN", "MANAGER", "STAFF")
+                .requestMatchers("/api/v1/security/**").hasAnyRole("ADMIN", "MANAGER", "SECURITY")
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())

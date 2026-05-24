@@ -107,6 +107,13 @@
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
 
+        <!-- ===== SWAGGER / OPENAPI (API Documentation) ===== -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.6.0</version>
+        </dependency>
+
         <!-- ===== TEST ===== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

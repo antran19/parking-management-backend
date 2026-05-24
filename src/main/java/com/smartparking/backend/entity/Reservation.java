@@ -21,8 +21,11 @@ public class Reservation {
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "slot_id", nullable = false)
-    private Slot slot;
+    @JoinColumn(name = "zone_id", nullable = false)
+    private Zone zone;
+
+    @Column(name = "reservation_code", unique = true, nullable = false, length = 20)
+    private String reservationCode;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vehicle_type_id", nullable = false)

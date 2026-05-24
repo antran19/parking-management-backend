@@ -21,6 +21,6 @@ public class LoginResponse {
         private String id;
         private String email;
         private String fullName;
-        private String role;     // ADMIN / MANAGER / STAFF / DRIVER
+        private String role;     // ADMIN / MANAGER / STAFF / DRIVER / SECURITY
     }
 }

@@ -10,7 +10,11 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "parking_sessions")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class ParkingSession {
 
     @Id
@@ -21,16 +25,35 @@ public class ParkingSession {
     private String sessionCode; // Mã vé - PS20240513001
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "slot_id")
-    private Slot slot;
+    @JoinColumn(name = "zone_id")
+    private Zone zone;
+
+    @Column(name = "qr_code", unique = true, length = 100)
+    private String qrCode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "driver_type", nullable = false, length = 20)
+    private DriverType driverType = DriverType.WALK_IN;
+
+    // === 4 cổng theo flow v2 ===
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "gate_entry_id", nullable = false)
-    private Gate gateEntry;
+    @JoinColumn(name = "entry_main_gate_id")
+    private Gate entryMainGate; // Cổng CHÍNH khi xe vào
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "gate_exit_id")
-    private Gate gateExit;
+    @JoinColumn(name = "entry_zone_gate_id")
+    private Gate entryZoneGate; // Cổng TẦNG khi xe vào khu
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "exit_zone_gate_id")
+    private Gate exitZoneGate; // Cổng TẦNG khi xe ra khu
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "exit_main_gate_id")
+    private Gate exitMainGate; // Cổng CHÍNH khi xe ra
+
+    // === Thông tin xe ===
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vehicle_type_id", nullable = false)
@@ -38,6 +61,8 @@ public class ParkingSession {
 
     @Column(name = "license_plate", nullable = false, length = 15)
     private String licensePlate;
+
+    // === Nhân viên xử lý ===
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "staff_entry_id")
@@ -47,11 +72,21 @@ public class ParkingSession {
     @JoinColumn(name = "staff_exit_id")
     private User staffExit; // Nhân viên làm thủ tục ra
 
+    // === Thời gian ===
+
     @Column(name = "entry_time", nullable = false)
-    private LocalDateTime entryTime;
+    private LocalDateTime entryTime; // Thời gian qua cổng CHÍNH vào
 
     @Column(name = "exit_time")
-    private LocalDateTime exitTime;
+    private LocalDateTime exitTime; // Thời gian qua cổng CHÍNH ra
+
+    @Column(name = "zone_entry_time")
+    private LocalDateTime zoneEntryTime; // Thời gian quét QR vào khu
+
+    @Column(name = "zone_exit_time")
+    private LocalDateTime zoneExitTime; // Thời gian quét QR ra khu
+
+    // === Phí ===
 
     @Column(name = "duration_minutes")
     private Integer durationMinutes;
@@ -72,6 +107,10 @@ public class ParkingSession {
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
+
+    public enum DriverType {
+        WALK_IN, PRE_BOOKED, SUBSCRIBER
+    }
 
     public enum SessionStatus {
         ACTIVE, COMPLETED, CANCELLED

@@ -19,8 +19,8 @@ public class SessionResponse {
     private UUID sessionId;
     private String sessionCode;   // Mã vé: PS20240513001
 
-    // Thông tin slot được phân bổ
-    private String slotCode;      // B2-A03
+    // Thông tin zone được phân bổ
+    private String zoneCode;      // A
     private String floorName;     // "B2"
     private String zoneName;      // "Khu A - Xe máy"
 
@@ -43,5 +43,5 @@ public class SessionResponse {
     private String paymentStatus;
 
     // Message hướng dẫn cho tài xế (hiển thị tại cổng vào)
-    private String guideMessage; // "Vui lòng đến Tầng B2 - Khu A - Ô số B2-A03"
+    private String guideMessage; // "Vui lòng đến Tầng B2 - Khu A - Xe máy"
 }

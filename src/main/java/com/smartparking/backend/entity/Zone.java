@@ -9,8 +9,7 @@ import java.util.UUID;
 
 /**
  * Zone — Khu vực trong một tầng, phân theo loại phương tiện.
- * Ví dụ: Tầng B1 có Zone A (xe máy), Zone B (ô tô).
- * Hierarchy: Building → Floor → Zone → Slot
+ * V2 quản lý sức chứa theo zone thay vì từng slot cố định.
  */
 @Entity
 @Table(name = "zones",
@@ -36,14 +35,25 @@ public class Zone {
     @JoinColumn(name = "vehicle_type_id", nullable = false)
     private VehicleType vehicleType; // Loại xe được phép đỗ trong zone này
 
-    @Column(name = "total_slots")
-    private Integer totalSlots = 0;
+    @Column(nullable = false)
+    private Integer capacity = 0;
 
-    @Column(name = "distance_to_elevator")
-    private Integer distanceToElevator; // Khoảng cách tới thang máy (m) — dùng cho AI scoring
+    @Column(name = "current_count", nullable = false)
+    private Integer currentCount = 0;
 
-    @Column(name = "is_active")
-    private Boolean isActive = true;
+    @Column(name = "reserved_count", nullable = false)
+    private Integer reservedCount = 0;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ZoneStatus status = ZoneStatus.ACTIVE;
+
+    @Column(name = "distance_to_gate")
+    private Integer distanceToGate;
+
+    public enum ZoneStatus {
+        ACTIVE, FULL, MAINTENANCE, LOCKED
+    }
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

@@ -1,6 +1,7 @@
 package com.smartparking.backend.controller;
 
 import com.smartparking.backend.dto.request.LoginRequest;
+import com.smartparking.backend.dto.request.RegisterRequest;
 import com.smartparking.backend.dto.response.ApiResponse;
 import com.smartparking.backend.dto.response.LoginResponse;
 import com.smartparking.backend.service.AuthService;
@@ -27,6 +28,17 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
         return ResponseEntity.ok(ApiResponse.success("Đăng nhập thành công", response));
+    }
+
+    /**
+     * API Đăng ký tài khoản Driver.
+     * Route: POST /api/v1/auth/register
+     * Access: Public
+     */
+    @PostMapping("/register")
+    public ResponseEntity<ApiResponse<Void>> register(@Valid @RequestBody RegisterRequest request) {
+        authService.register(request);
+        return ResponseEntity.ok(ApiResponse.success("Đăng ký tài khoản thành công", null));
     }
 
     /**

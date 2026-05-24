@@ -5,7 +5,6 @@ import com.smartparking.backend.dto.request.CheckOutRequest;
 import com.smartparking.backend.dto.response.SessionResponse;
 import com.smartparking.backend.entity.*;
 import com.smartparking.backend.entity.ParkingSession.SessionStatus;
-import com.smartparking.backend.entity.Slot.SlotStatus;
 import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.repository.*;
@@ -34,8 +33,7 @@ public class ParkingSessionService {
     private static final Logger log = LoggerFactory.getLogger(ParkingSessionService.class);
 
     private final ParkingSessionRepository sessionRepository;
-    private final SlotRepository slotRepository;
-    private final SlotAssignmentService slotAssignmentService;
+    private final ZoneSuggestionService zoneSuggestionService;
     private final PricingService pricingService;
     private final GateRepository gateRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
@@ -44,8 +42,7 @@ public class ParkingSessionService {
 
     public ParkingSessionService(
             ParkingSessionRepository sessionRepository,
-            SlotRepository slotRepository,
-            SlotAssignmentService slotAssignmentService,
+            ZoneSuggestionService zoneSuggestionService,
             PricingService pricingService,
             GateRepository gateRepository,
             VehicleTypeRepository vehicleTypeRepository,
@@ -53,8 +50,7 @@ public class ParkingSessionService {
             SimpMessagingTemplate messagingTemplate
     ) {
         this.sessionRepository = sessionRepository;
-        this.slotRepository = slotRepository;
-        this.slotAssignmentService = slotAssignmentService;
+        this.zoneSuggestionService = zoneSuggestionService;
         this.pricingService = pricingService;
         this.gateRepository = gateRepository;
         this.vehicleTypeRepository = vehicleTypeRepository;
@@ -69,12 +65,12 @@ public class ParkingSessionService {
     /**
      * Xử lý xe vào bãi:
      *  1. Kiểm tra biển số không bị trùng session đang ACTIVE
-     *  2. Gọi SlotAssignment tìm + lock slot tối ưu
+     *  2. Gợi ý zone phù hợp theo loại xe
      *  3. Tạo ParkingSession mới
-     *  4. Broadcast thay đổi slot qua WebSocket
-     *  5. Trả response hướng dẫn tài xế đến slot
+     *  4. Broadcast thay đổi zone qua WebSocket
+     *  5. Trả response hướng dẫn tài xế đến khu
      */
-    @Transactional
+    @Transactional  //nếu bất kỳ bước nào lỗi, toàn bộ sẽ rollback (không lưu nửa chừng)
     public SessionResponse checkIn(CheckInRequest request) {
         // Bước 1: Validate — biển số không được có session đang mở (BR-06)
         sessionRepository.findByLicensePlateAndStatus(request.getLicensePlate(), SessionStatus.ACTIVE)
@@ -87,47 +83,38 @@ public class ParkingSessionService {
         // Bước 2: Tìm entity references
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Loại phương tiện không tồn tại"));
-        Gate gateEntry = gateRepository.findById(request.getGateEntryId())
+        Gate mainGate = gateRepository.findById(request.getGateEntryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng vào không tồn tại"));
 
-        // Bước 3: Sinh mã session duy nhất
+        // Bước 3: Gợi ý zone phù hợp theo loại xe và sức chứa còn trống
+        Zone assignedZone = zoneSuggestionService.suggestZone(vehicleType);
+        assignedZone = zoneSuggestionService.enterZone(assignedZone);
+
+        // Bước 4: Sinh mã session duy nhất
         String sessionCode = generateSessionCode();
 
-        // Bước 4: Tạo session trước (cần ID để pass cho slotAssignment lock)
+        // Bước 5: Tạo session theo zone
         ParkingSession session = ParkingSession.builder()
                 .sessionCode(sessionCode)
                 .licensePlate(request.getLicensePlate())
                 .vehicleType(vehicleType)
-                .gateEntry(gateEntry)
+                .zone(assignedZone)
+                .entryMainGate(mainGate)
                 .entryTime(LocalDateTime.now())
+                .zoneEntryTime(LocalDateTime.now())
+                .qrCode(sessionCode)
                 .status(SessionStatus.ACTIVE)
                 .notes(request.getNotes())
                 .build();
         session = sessionRepository.save(session);
 
-        // Bước 5: Gọi thuật toán phân bổ slot (core AI)
-        Slot assignedSlot;
-        try {
-            assignedSlot = slotAssignmentService.assignOptimalSlot(vehicleType, session.getId());
-        } catch (BusinessException e) {
-            // Nếu không còn slot → xóa session vừa tạo
-            sessionRepository.delete(session);
-            throw e;
-        }
+        broadcastZoneChange(assignedZone);
 
-        // Bước 6: Gán slot cho session
-        session.setSlot(assignedSlot);
-        session = sessionRepository.save(session);
-
-        // Bước 7: Broadcast slot status change qua WebSocket
-        broadcastSlotChange(assignedSlot);
-
-        log.info("CHECK-IN: plate={}, session={}, slot={}, floor={}",
+        log.info("CHECK-IN: plate={}, session={}, zone={}, floor={}",
                 request.getLicensePlate(), sessionCode,
-                assignedSlot.getSlotCode(), assignedSlot.getFloor().getFloorName());
+                assignedZone.getZoneCode(), assignedZone.getFloor().getFloorName());
 
-        // Bước 8: Build response
-        return buildSessionResponse(session, assignedSlot, null);
+        return buildSessionResponse(session, assignedZone, null);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -139,15 +126,15 @@ public class ParkingSessionService {
      *  1. Tìm session (theo sessionId / sessionCode / licensePlate)
      *  2. Tính thời gian + phí
      *  3. Tạo Payment record
-     *  4. Đóng session + giải phóng slot
-     *  5. Broadcast slot change
+     *  4. Đóng session + giải phóng zone
+     *  5. Broadcast zone change
      */
     @Transactional
     public SessionResponse checkOut(CheckOutRequest request) {
         // Bước 1: Tìm parking session đang ACTIVE
         ParkingSession session = findActiveSession(request);
 
-        Gate gateExit = gateRepository.findById(request.getGateExitId())
+        Gate exitGate = gateRepository.findById(request.getGateExitId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng ra không tồn tại"));
 
         // Bước 2: Tính thời gian gửi
@@ -156,13 +143,14 @@ public class ParkingSessionService {
         if (durationMinutes < 1) durationMinutes = 1; // Tối thiểu 1 phút
 
         // Bước 3: Tính phí
-        UUID buildingId = session.getSlot().getFloor().getBuilding().getId();
+        UUID buildingId = session.getZone().getFloor().getBuilding().getId();
         UUID vehicleTypeId = session.getVehicleType().getId();
         BigDecimal totalFee = pricingService.calculateFee(buildingId, vehicleTypeId, durationMinutes);
 
         // Bước 4: Cập nhật session
         session.setExitTime(exitTime);
-        session.setGateExit(gateExit);
+        session.setZoneExitTime(exitTime);
+        session.setExitMainGate(exitGate);
         session.setDurationMinutes(durationMinutes);
         session.setTotalFee(totalFee);
         session.setStatus(SessionStatus.COMPLETED);
@@ -186,15 +174,11 @@ public class ParkingSessionService {
                 .build();
         paymentRepository.save(payment);
 
-        // Bước 6: Giải phóng slot
-        Slot slot = session.getSlot();
-        if (slot != null) {
-            slot.setStatus(SlotStatus.AVAILABLE);
-            slotRepository.save(slot);
-            slotAssignmentService.releaseSlotLock(slot.getId());
-
-            // Broadcast slot change
-            broadcastSlotChange(slot);
+        // Bước 6: Giải phóng sức chứa zone
+        Zone zone = session.getZone();
+        if (zone != null) {
+            zone = zoneSuggestionService.exitZone(zone);
+            broadcastZoneChange(zone);
         }
 
         session = sessionRepository.save(session);
@@ -203,7 +187,7 @@ public class ParkingSessionService {
                 session.getLicensePlate(), session.getSessionCode(),
                 durationMinutes, totalFee);
 
-        return buildSessionResponse(session, slot, "COMPLETED");
+        return buildSessionResponse(session, zone, "COMPLETED");
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -221,11 +205,11 @@ public class ParkingSessionService {
 
         // Tính phí tạm tính
         int currentMinutes = (int) ChronoUnit.MINUTES.between(session.getEntryTime(), LocalDateTime.now());
-        UUID buildingId = session.getSlot().getFloor().getBuilding().getId();
+        UUID buildingId = session.getZone().getFloor().getBuilding().getId();
         BigDecimal estimatedFee = pricingService.estimateFee(
                 buildingId, session.getVehicleType().getId(), currentMinutes);
 
-        SessionResponse response = buildSessionResponse(session, session.getSlot(), null);
+        SessionResponse response = buildSessionResponse(session, session.getZone(), null);
         response.setDurationMinutes(currentMinutes);
         response.setTotalFee(estimatedFee);
         response.setGuideMessage("Phí tạm tính: " + estimatedFee + "đ (chưa bao gồm thời gian còn lại)");
@@ -272,7 +256,7 @@ public class ParkingSessionService {
     /**
      * Build response DTO từ entity.
      */
-    private SessionResponse buildSessionResponse(ParkingSession session, Slot slot, String paymentStatus) {
+    private SessionResponse buildSessionResponse(ParkingSession session, Zone zone, String paymentStatus) {
         SessionResponse.SessionResponseBuilder builder = SessionResponse.builder()
                 .sessionId(session.getId())
                 .sessionCode(session.getSessionCode())
@@ -285,36 +269,35 @@ public class ParkingSessionService {
                 .status(session.getStatus())
                 .paymentStatus(paymentStatus);
 
-        if (slot != null) {
-            builder.slotCode(slot.getSlotCode())
-                   .floorName(slot.getFloor().getFloorName())
-                   .zoneName("Khu " + slot.getSlotCode().split("-")[0])
+        if (zone != null) {
+            builder.zoneCode(zone.getZoneCode())
+                   .floorName(zone.getFloor().getFloorName())
+                   .zoneName(zone.getZoneName())
                    .guideMessage(String.format(
-                           "Vui lòng đến Tầng %s - Ô số %s",
-                           slot.getFloor().getFloorName(),
-                           slot.getSlotCode()));
+                           "Vui lòng đến Tầng %s - %s",
+                           zone.getFloor().getFloorName(),
+                           zone.getZoneName()));
         }
 
         return builder.build();
     }
 
-    /**
-     * Broadcast thay đổi trạng thái slot qua WebSocket.
-     * Client subscribe: /topic/slots/{buildingId}
-     */
-    private void broadcastSlotChange(Slot slot) {
+    private void broadcastZoneChange(Zone zone) {
         try {
-            UUID buildingId = slot.getFloor().getBuilding().getId();
+            UUID buildingId = zone.getFloor().getBuilding().getId();
             Map<String, Object> message = Map.of(
-                    "slotId", slot.getId().toString(),
-                    "slotCode", slot.getSlotCode(),
-                    "status", slot.getStatus().name(),
-                    "floorName", slot.getFloor().getFloorName(),
+                    "zoneId", zone.getId().toString(),
+                    "zoneCode", zone.getZoneCode(),
+                    "zoneName", zone.getZoneName(),
+                    "status", zone.getStatus().name(),
+                    "currentCount", zone.getCurrentCount(),
+                    "capacity", zone.getCapacity(),
+                    "floorName", zone.getFloor().getFloorName(),
                     "timestamp", LocalDateTime.now().toString()
             );
-            messagingTemplate.convertAndSend("/topic/slots/" + buildingId, message);
+            messagingTemplate.convertAndSend("/topic/zones/" + buildingId, message);
         } catch (Exception e) {
-            log.warn("Failed to broadcast slot change: {}", e.getMessage());
+            log.warn("Failed to broadcast zone change: {}", e.getMessage());
         }
     }
 }

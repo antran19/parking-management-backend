@@ -1,6 +1,7 @@
 package com.smartparking.backend.service;
 
 import com.smartparking.backend.dto.request.LoginRequest;
+import com.smartparking.backend.dto.request.RegisterRequest;
 import com.smartparking.backend.dto.response.LoginResponse;
 import com.smartparking.backend.entity.User;
 import com.smartparking.backend.exception.BusinessException;
@@ -13,7 +14,9 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AuthService {
@@ -24,15 +27,40 @@ public class AuthService {
     private final UserDetailsService userDetailsService;
     private final UserRepository userRepository;
     private final JwtUtil jwtUtil;
+    private final PasswordEncoder passwordEncoder;
 
     public AuthService(AuthenticationManager authenticationManager,
                        UserDetailsService userDetailsService,
                        UserRepository userRepository,
-                       JwtUtil jwtUtil) {
+                       JwtUtil jwtUtil,
+                       PasswordEncoder passwordEncoder) {
         this.authenticationManager = authenticationManager;
         this.userDetailsService = userDetailsService;
         this.userRepository = userRepository;
         this.jwtUtil = jwtUtil;
+        this.passwordEncoder = passwordEncoder;
+    }
+
+    /**
+     * Đăng ký tài khoản Driver mới.
+     */
+    @Transactional
+    public void register(RegisterRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new BusinessException("Email này đã được sử dụng trong hệ thống");
+        }
+
+        User newUser = User.builder()
+                .email(request.getEmail())
+                .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .fullName(request.getFullName())
+                .phone(request.getPhone())
+                .role(User.Role.DRIVER)
+                .isActive(true)
+                .build();
+
+        userRepository.save(newUser);
+        log.info("Người dùng mới đăng ký: {}", request.getEmail());
     }
 
     /**

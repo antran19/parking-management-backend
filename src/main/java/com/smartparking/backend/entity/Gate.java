@@ -38,6 +38,11 @@ public class Gate {
     private LocalDateTime createdAt;
 
     public enum GateType {
-        ENTRY, EXIT, BOTH
+        MAIN_ENTRY,   // Cổng chính - vào
+        MAIN_EXIT,    // Cổng chính - ra
+        MAIN_BOTH,    // Cổng chính - vào + ra
+        ZONE_ENTRY,   // Cổng tầng - vào khu
+        ZONE_EXIT,    // Cổng tầng - ra khu
+        ZONE_BOTH     // Cổng tầng - vào + ra khu
     }
 }

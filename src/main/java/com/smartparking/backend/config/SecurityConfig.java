@@ -56,6 +56,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/manager/**").hasAnyRole("ADMIN", "MANAGER")
                 .requestMatchers("/api/v1/staff/**").hasAnyRole("ADMIN", "MANAGER", "STAFF")
                 .requestMatchers("/api/v1/security/**").hasAnyRole("ADMIN", "MANAGER", "SECURITY")
+                // --- THAY ĐỔI: Phân quyền cụ thể cho Driver endpoints ---
+                .requestMatchers("/api/v1/driver/**").hasAnyRole("ADMIN", "DRIVER")
                 .anyRequest().authenticated()
             )
             .authenticationProvider(authenticationProvider())

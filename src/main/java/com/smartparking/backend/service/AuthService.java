@@ -1,5 +1,6 @@
 package com.smartparking.backend.service;
 
+import com.smartparking.backend.dto.request.ChangePasswordRequest;
 import com.smartparking.backend.dto.request.LoginRequest;
 import com.smartparking.backend.dto.request.RegisterRequest;
 import com.smartparking.backend.dto.response.LoginResponse;
@@ -102,18 +103,28 @@ public class AuthService {
      * Refresh access token bằng refresh token.
      */
     public LoginResponse refreshToken(String refreshToken) {
-        String email = jwtUtil.extractUsername(refreshToken);
+        String email;
+        String tokenType;
+        
+        // --- THAY ĐỔI: Bảo vệ quá trình giải mã Token, tránh quăng lỗi 500 hệ thống khi token hết hạn ---
+        try {
+            email = jwtUtil.extractUsername(refreshToken);
+            tokenType = jwtUtil.extractClaim(refreshToken, claims -> claims.get("type", String.class));
+        } catch (Exception e) {
+            throw new BusinessException("Refresh token không hợp lệ hoặc đã hết hạn");
+        }
+        // --- THAY ĐỔI: Bắt buộc Token sử dụng tại đây phải là Refresh Token ---
+        if (!"refresh".equals(tokenType)) {
+            throw new BusinessException("Token này không phải là Refresh Token hợp lệ");
+        }
+        // --------------------------------------------------------------------
         UserDetails userDetails = userDetailsService.loadUserByUsername(email);
-
         if (!jwtUtil.isTokenValid(refreshToken, userDetails)) {
             throw new BusinessException("Refresh token không hợp lệ hoặc đã hết hạn");
         }
-
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("Không tìm thấy tài khoản"));
-
         String newAccessToken = jwtUtil.generateAccessToken(userDetails);
-
         return LoginResponse.builder()
                 .accessToken(newAccessToken)
                 .refreshToken(refreshToken)
@@ -126,5 +137,21 @@ public class AuthService {
                         .role(user.getRole().name())
                         .build())
                 .build();
+    }
+    /**
+     * --- THAY ĐỔI: Triển khai API đổi mật khẩu cho người dùng ---
+     */
+    @Transactional
+    public void changePassword(String email, ChangePasswordRequest request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException("Không tìm thấy tài khoản người dùng"));
+        // Kiểm tra mật khẩu cũ gửi lên có khớp với password_hash trong DB không
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
+            throw new BusinessException("Mật khẩu cũ không chính xác");
+        }
+        // Mã hóa mật khẩu mới và lưu lại
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+        log.info("Người dùng {} đã đổi mật khẩu thành công.", email);
     }
 }

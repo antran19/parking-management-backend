@@ -1,5 +1,6 @@
 package com.smartparking.backend.controller;
 
+import com.smartparking.backend.dto.request.ChangePasswordRequest;
 import com.smartparking.backend.dto.request.LoginRequest;
 import com.smartparking.backend.dto.request.RegisterRequest;
 import com.smartparking.backend.dto.response.ApiResponse;
@@ -7,6 +8,7 @@ import com.smartparking.backend.dto.response.LoginResponse;
 import com.smartparking.backend.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -60,5 +62,19 @@ public class AuthController {
     @PostMapping("/logout")
     public ResponseEntity<ApiResponse<Void>> logout() {
         return ResponseEntity.ok(ApiResponse.success("Đăng xuất thành công", null));
+    }
+    /**
+     * API Đổi mật khẩu tài khoản.
+     * Route: POST /api/v1/auth/change-password
+     * Access: Authenticated (Yêu cầu đăng nhập)
+     */
+    
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request) {
+        // Lấy email người dùng hiện tại đang đăng nhập từ Security Context
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        authService.changePassword(email, request);
+        return ResponseEntity.ok(ApiResponse.success("Đổi mật khẩu thành công", null));
     }
 }

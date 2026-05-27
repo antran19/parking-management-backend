@@ -5,6 +5,7 @@ import io.jsonwebtoken.security.Keys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
@@ -14,7 +15,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
-
+import java.util.stream.Collectors;
+import java.util.List;
 @Component
 public class JwtUtil {
 
@@ -40,6 +42,13 @@ public class JwtUtil {
     public String generateAccessToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("type", "access");
+        
+        // --- THAY ĐỔI: Thêm các role (dưới dạng mảng) vào Claims để JWT tự chứa thông tin phân quyền ---
+        List<String> roles = userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toList());
+        claims.put("roles", roles);
+        // ------------------------------------------------------------------------------------------
         return buildToken(claims, userDetails.getUsername(), expiration);
     }
 

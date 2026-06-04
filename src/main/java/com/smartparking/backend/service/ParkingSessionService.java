@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -43,6 +44,7 @@ public class ParkingSessionService {
         // Inject thêm fields:
         private final ReservationRepository reservationRepository;
         private final ZoneRepository zoneRepository;
+        private final ParkingPassRepository parkingPassRepository;
 
         // Sửa constructor để nhận thêm 2 tham số:
         public ParkingSessionService(
@@ -54,7 +56,8 @@ public class ParkingSessionService {
                         PaymentRepository paymentRepository,
                         SimpMessagingTemplate messagingTemplate,
                         ReservationRepository reservationRepository, // <--- THÊM
-                        ZoneRepository zoneRepository // <--- THÊM
+                        ZoneRepository zoneRepository, // <--- THÊM
+                        ParkingPassRepository parkingPassRepository
         ) {
                 this.sessionRepository = sessionRepository;
                 this.zoneSuggestionService = zoneSuggestionService;
@@ -65,6 +68,7 @@ public class ParkingSessionService {
                 this.messagingTemplate = messagingTemplate;
                 this.reservationRepository = reservationRepository; // <--- THÊM
                 this.zoneRepository = zoneRepository; // <--- THÊM
+                this.parkingPassRepository = parkingPassRepository;
         }
 
         // ═══════════════════════════════════════════════════════════════════════════
@@ -98,23 +102,57 @@ public class ParkingSessionService {
                                 .orElseThrow(() -> new ResourceNotFoundException("Cổng vào không tồn tại"));
 
                 // Bước 3: Gợi ý zone phù hợp theo loại xe và sức chứa còn trống
-                // ==================== KHỞI ĐẦU LUỒNG CHECK-IN TÍCH HỢP ĐẶT CHỖ
-                // ====================
+                // ==================== KHỞI ĐẦU LUỒNG CHECK-IN TÍCH HỢP ĐẶT CHỖ & VÉ THÁNG ====================
                 // Kiểm tra xem biển số xe này có đặt trước CONFIRMED nào chưa sử dụng không
                 java.util.Optional<Reservation> reservationOpt = reservationRepository
                                 .findFirstByLicensePlateAndVehicleTypeAndStatusOrderByReservedFromAsc(
                                                 request.getLicensePlate(), vehicleType,
                                                 Reservation.ReservationStatus.CONFIRMED);
 
+                // Kiểm tra xem biển số xe này có gói đăng ký (vé tháng/quý/năm) đang hoạt động tại tòa nhà này không
+                java.util.Optional<ParkingPass> activePassOpt = parkingPassRepository.findActivePass(
+                                request.getLicensePlate(), mainGate.getBuilding().getId(), vehicleType.getId(), LocalDate.now());
+
                 Zone assignedZone;
                 DriverType driverType;
 
-                if (reservationOpt.isPresent()) {
+                if (activePassOpt.isPresent()) {
+                        // Xe có vé tháng/quý/năm hoạt động
+                        driverType = DriverType.SUBSCRIBER;
+
+                        // Nếu có lịch đặt trước, hoàn thành lịch đặt và lấy khu đã đặt
+                        if (reservationOpt.isPresent()) {
+                                Reservation reservation = reservationOpt.get();
+                                assignedZone = reservation.getZone();
+
+                                // Giảm số lượng chỗ dành riêng (reservedCount) và tăng đỗ thực tế (currentCount)
+                                if (assignedZone.getReservedCount() > 0) {
+                                        assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
+                                }
+                                assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
+
+                                if (assignedZone.getCurrentCount() + assignedZone.getReservedCount() >= assignedZone.getCapacity()) {
+                                        assignedZone.setStatus(Zone.ZoneStatus.FULL);
+                                }
+                                assignedZone = zoneRepository.save(assignedZone);
+
+                                // Hoàn tất lịch đặt
+                                reservation.setStatus(Reservation.ReservationStatus.COMPLETED);
+                                reservationRepository.save(reservation);
+
+                                log.info("CHECK-IN VÉ THÁNG (CÓ ĐẶT TRƯỚC): Biển số={}, Lịch hẹn={}, Khu đỗ={}",
+                                                request.getLicensePlate(), reservation.getReservationCode(), assignedZone.getZoneCode());
+                        } else {
+                                // Gợi ý zone bình thường cho subscriber
+                                assignedZone = zoneSuggestionService.suggestZone(vehicleType);
+                                assignedZone = zoneSuggestionService.enterZone(assignedZone);
+                                log.info("CHECK-IN VÉ THÁNG: Biển số={}, Khu đỗ={}", request.getLicensePlate(), assignedZone.getZoneCode());
+                        }
+                } else if (reservationOpt.isPresent()) {
                         Reservation reservation = reservationOpt.get();
                         assignedZone = reservation.getZone();
 
-                        // Chuyển đổi chỗ: giảm đặt trước (reservedCount) và tăng đỗ thực tế
-                        // (currentCount)
+                        // Chuyển đổi chỗ: giảm đặt trước (reservedCount) và tăng đỗ thực tế (currentCount)
                         if (assignedZone.getReservedCount() > 0) {
                                 assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
                         }
@@ -142,8 +180,7 @@ public class ParkingSessionService {
                         assignedZone = zoneSuggestionService.enterZone(assignedZone);
                         driverType = DriverType.WALK_IN;
                 }
-                // ==================== KẾT THÚC LUỒNG CHECK-IN TÍCH HỢP ĐẶT CHỖ
-                // ====================
+                // ==================== KẾT THÚC LUỒNG CHECK-IN TÍCH HỢP ĐẶT CHỖ & VÉ THÁNG ====================
 
                 // Bước 4: Sinh mã session duy nhất
                 String sessionCode = generateSessionCode();
@@ -200,10 +237,15 @@ public class ParkingSessionService {
                 if (durationMinutes < 1)
                         durationMinutes = 1; // Tối thiểu 1 phút
 
-                // Bước 3: Tính phí
-                UUID buildingId = session.getZone().getFloor().getBuilding().getId();
-                UUID vehicleTypeId = session.getVehicleType().getId();
-                BigDecimal totalFee = pricingService.calculateFee(buildingId, vehicleTypeId, durationMinutes);
+                // Bước 3: Tính phí (Miễn phí hoàn toàn nếu là Subscriber - có vé đăng ký hoạt động)
+                BigDecimal totalFee = BigDecimal.ZERO;
+                if (session.getDriverType() != DriverType.SUBSCRIBER) {
+                        UUID buildingId = session.getZone().getFloor().getBuilding().getId();
+                        UUID vehicleTypeId = session.getVehicleType().getId();
+                        totalFee = pricingService.calculateFee(buildingId, vehicleTypeId, durationMinutes);
+                } else {
+                        log.info("CHECK-OUT VÉ THÁNG (SUBSCRIBER): Biển số={}, phí = 0 VNĐ", session.getLicensePlate());
+                }
 
                 // Bước 4: Cập nhật session
                 session.setExitTime(exitTime);

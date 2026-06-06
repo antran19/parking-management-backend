@@ -26,6 +26,12 @@ import java.util.UUID;
  * Luồng chính:
  *   checkIn()  → Tạo session + gán slot + broadcast trạng thái
  *   checkOut() → Tính phí + ghi payment + giải phóng slot + broadcast
+ *
+ * Ghi chú liên quan Redis/zone:
+ *  - ZoneSuggestionService hiện tại dùng Redis counters + distributed lock để tránh race khi gần đầy.
+ *  - Để lock an toàn hơn, nên truyền sessionId (hoặc mã phiên tạm thời) vào enterZone/exitZone để
+ *    khóa theo owner; hiện code gọi enterZone/exitZone mà chưa truyền sessionId — cần bổ sung.
+ *  - Nếu muốn retry khi tryLock thất bại, thực hiện retry với backoff quanh bước enterZone ở đây.
  */
 @Service
 public class ParkingSessionService {
@@ -69,6 +75,11 @@ public class ParkingSessionService {
      *  3. Tạo ParkingSession mới
      *  4. Broadcast thay đổi zone qua WebSocket
      *  5. Trả response hướng dẫn tài xế đến khu
+     *
+     * Lưu ý quan trọng về concurrency + Redis:
+     *  - Ở đây zoneSuggestionService.enterZone thực hiện redis.increment và cập nhật DB.
+     *  - Để track owner lock chính xác, nên truyền sessionCode hoặc sessionId vào enterZone
+     *    (hiện mã nguồn chưa truyền — cần sửa nếu muốn unlock an toàn bằng sessionId).
      */
     @Transactional  //nếu bất kỳ bước nào lỗi, toàn bộ sẽ rollback (không lưu nửa chừng)
     public SessionResponse checkIn(CheckInRequest request) {
@@ -87,7 +98,11 @@ public class ParkingSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng vào không tồn tại"));
 
         // Bước 3: Gợi ý zone phù hợp theo loại xe và sức chứa còn trống
+        // => Suggestion dùng Redis để quyết định gần thời gian thực
         Zone assignedZone = zoneSuggestionService.suggestZone(vehicleType);
+
+        // TODO: nên truyền sessionId/sessionCode vào enterZone để lock owner rõ ràng.
+        // Hiện tại enterZone thực hiện redis.increment và persist DB.
         assignedZone = zoneSuggestionService.enterZone(assignedZone);
 
         // Bước 4: Sinh mã session duy nhất
@@ -108,6 +123,7 @@ public class ParkingSessionService {
                 .build();
         session = sessionRepository.save(session);
 
+        // Broadcast trạng thái sau khi đã persist session
         broadcastZoneChange(assignedZone);
 
         log.info("CHECK-IN: plate={}, session={}, zone={}, floor={}",
@@ -128,6 +144,10 @@ public class ParkingSessionService {
      *  3. Tạo Payment record
      *  4. Đóng session + giải phóng zone
      *  5. Broadcast zone change
+     *
+     * Ghi chú Redis/zone:
+     *  - exitZone thực hiện redis.decrement rồi persist DB.
+     *  - Nếu muốn unlock theo owner, cần đảm bảo exit uses sessionId.
      */
     @Transactional
     public SessionResponse checkOut(CheckOutRequest request) {
@@ -177,6 +197,7 @@ public class ParkingSessionService {
         // Bước 6: Giải phóng sức chứa zone
         Zone zone = session.getZone();
         if (zone != null) {
+            // exitZone sẽ giảm counter Redis và persist DB
             zone = zoneSuggestionService.exitZone(zone);
             broadcastZoneChange(zone);
         }

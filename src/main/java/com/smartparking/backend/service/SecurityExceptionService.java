@@ -1,4 +1,4 @@
-﻿package com.smartparking.backend.service;
+package com.smartparking.backend.service;
 
 import com.smartparking.backend.dto.request.SecurityExceptionRequest;
 import com.smartparking.backend.entity.*;

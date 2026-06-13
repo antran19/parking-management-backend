@@ -1,4 +1,4 @@
-﻿package com.smartparking.backend.service;
+package com.smartparking.backend.service;
 
 import com.smartparking.backend.repository.PricingRuleRepository;
 import org.springframework.stereotype.Service;

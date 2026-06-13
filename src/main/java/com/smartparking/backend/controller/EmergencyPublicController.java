@@ -1,4 +1,4 @@
-﻿package com.smartparking.backend.controller;
+package com.smartparking.backend.controller;
 
 import com.smartparking.backend.service.EmergencyService;
 import org.springframework.web.bind.annotation.*;

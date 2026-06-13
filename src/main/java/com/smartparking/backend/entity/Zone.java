@@ -1,5 +1,6 @@
 package com.smartparking.backend.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -23,6 +24,7 @@ public class Zone {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "floor_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Floor floor;
 
     @Column(name = "zone_code", nullable = false, length = 10)
@@ -33,6 +35,7 @@ public class Zone {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "vehicle_type_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private VehicleType vehicleType; // Loại xe được phép đỗ trong zone này
 
     @Column(nullable = false)

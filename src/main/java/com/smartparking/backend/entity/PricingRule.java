@@ -44,6 +44,6 @@ public class PricingRule {
     private LocalDateTime createdAt;
 
     public enum PricingType {
-        HOURLY, DAILY, MONTHLY
+        HOURLY, DAILY, MONTHLY, QUARTERLY, YEARLY
     }
 }

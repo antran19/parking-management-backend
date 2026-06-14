@@ -1,5 +1,6 @@
 package com.smartparking.backend.repository;
 
+import com.smartparking.backend.entity.Building;
 import com.smartparking.backend.entity.ParkingPass;
 import com.smartparking.backend.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -12,4 +13,5 @@ import java.util.UUID;
 public interface ParkingPassRepository extends JpaRepository<ParkingPass, UUID> {
     List<ParkingPass> findByUser(User user);
     List<ParkingPass> findByUserAndStatus(User user, ParkingPass.PassStatus status);
+    List<ParkingPass> findByLicensePlateAndBuildingAndStatus(String licensePlate, Building building, ParkingPass.PassStatus status);
 }

@@ -45,9 +45,9 @@ public class SessionController {
                 "Check-in thành công. " + response.getGuideMessage(), response));
     }
 
-    /*
+    /**
      * Check-out xe ra bãi — chỉ STAFF trở lên.
-     * (Tạm thời đóng phục vụ Milestone 1)
+     */
     @PostMapping("/staff/sessions/checkout")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> checkOut(
@@ -56,22 +56,20 @@ public class SessionController {
         return ResponseEntity.ok(ApiResponse.success(
                 "Check-out thành công. Tổng phí: " + response.getTotalFee() + "đ", response));
     }
-    */
 
-    /*
+    /**
      * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem.
-     * (Tạm thời đóng phục vụ Milestone 1)
+     */
     @GetMapping("/staff/sessions/history")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<java.util.List<SessionResponse>>> getAllSessions() {
         java.util.List<SessionResponse> history = parkingSessionService.getAllSessions();
         return ResponseEntity.ok(ApiResponse.success(history));
     }
-    */
 
-    /*
+    /**
      * Driver khởi tạo thanh toán VNPay sandbox để check-out phiên gửi xe đang hoạt động.
-     * (Tạm thời đóng phục vụ Milestone 1)
+     */
     @PostMapping("/driver/sessions/checkout/vnpay")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> initiateVnPayCheckout(
@@ -80,11 +78,10 @@ public class SessionController {
         Map<String, Object> response = parkingSessionService.initiateDriverVnPayCheckout(body, request);
         return ResponseEntity.ok(ApiResponse.success("Đã tạo liên kết thanh toán VNPay cho phiên gửi xe", response));
     }
-    */
 
-    /*
+    /**
      * Xem session đang hoạt động của Driver — Mọi authenticated user (Driver/Staff) có quyền truy cập.
-     * (Tạm thời đóng phục vụ Milestone 1)
+     */
     @GetMapping("/driver/sessions/active")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> getActiveSession(
@@ -92,11 +89,10 @@ public class SessionController {
         SessionResponse response = parkingSessionService.getActiveSession(licensePlate);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
-    */
 
-    /*
+    /**
      * Lịch sử gửi xe theo biển số — Mọi authenticated user (Driver/Staff) có quyền truy cập.
-     * (Tạm thời đóng phục vụ Milestone 1)
+     */
     @GetMapping("/driver/sessions/history")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<java.util.List<SessionResponse>>> getSessionHistory(
@@ -104,5 +100,4 @@ public class SessionController {
         java.util.List<SessionResponse> history = parkingSessionService.getSessionHistory(licensePlate);
         return ResponseEntity.ok(ApiResponse.success(history));
     }
-    */
 }

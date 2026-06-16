@@ -1,4 +1,5 @@
 package com.smartparking.backend.controller;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -8,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.smartparking.backend.entity.Reservation;
+import com.smartparking.backend.repository.ReservationRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,18 +45,19 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
-
 /**
  * DriverController — API cho Driver.
  *
  * Quảng phụ trách:
- * - GET    /api/v1/driver/plates  -- lấy danh sách biển số của driver
- * - POST   /api/v1/driver/plates  -- thêm biển số mới cho driver
+ * - GET /api/v1/driver/plates -- lấy danh sách biển số của driver
+ * - POST /api/v1/driver/plates -- thêm biển số mới cho driver
  * - DELETE /api/v1/driver/plates?plate={plate} -- xóa biển số của driver
- * - GET    /api/v1/driver/pricing-plans -- lấy bảng giá gửi xe theo loại xe
- * - GET    /api/v1/driver/parking-passes -- lấy danh sách vé tháng/quý/năm của driver
- * - POST   /api/v1/driver/parking-passes -- đăng ký vé tháng/quý/năm mới
- * - POST   /api/v1/driver/parking-passes/{passId}/pay -- tạo lại link thanh toán cho vé đã đăng ký
+ * - GET /api/v1/driver/pricing-plans -- lấy bảng giá gửi xe theo loại xe
+ * - GET /api/v1/driver/parking-passes -- lấy danh sách vé tháng/quý/năm của
+ * driver
+ * - POST /api/v1/driver/parking-passes -- đăng ký vé tháng/quý/năm mới
+ * - DELETE /api/v1/driver/parking-passes/{passId}/cancel -- hủy đơn vé đang chờ
+ * thanh toánmvn clean compile
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -63,7 +67,7 @@ public class DriverController {
     private final UserRepository userRepository;
     private final UserLicensePlateRepository userLicensePlateRepository;
     private final PricingRuleRepository pricingRuleRepository;
-
+    private final ReservationRepository reservationRepository;
     /**
      * NOTE:
      * 3 repository dưới đây dùng cho chức năng vé tháng / quý / năm của Driver.
@@ -76,17 +80,17 @@ public class DriverController {
             UserRepository userRepository,
             UserLicensePlateRepository userLicensePlateRepository,
             PricingRuleRepository pricingRuleRepository,
+            ReservationRepository reservationRepository,
             ParkingPassRepository parkingPassRepository,
             BuildingRepository buildingRepository,
-            VehicleTypeRepository vehicleTypeRepository
-    ) {
+            VehicleTypeRepository vehicleTypeRepository) {
         this.userRepository = userRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
         this.pricingRuleRepository = pricingRuleRepository;
+        this.reservationRepository = reservationRepository;
         this.parkingPassRepository = parkingPassRepository;
         this.buildingRepository = buildingRepository;
         this.vehicleTypeRepository = vehicleTypeRepository;
-    
     }
 
     /**
@@ -100,15 +104,15 @@ public class DriverController {
         User currentUser = getCurrentUser(authentication);
 
         /*
-        * NOTE Quảng - Driver scope:
-        * DB có thể đã tồn tại dữ liệu cũ dạng:
-        * - 51H12345
-        * - 51H-123.45
-        *
-        * Hai chuỗi này là cùng một biển số sau khi normalize.
-        * Vì không được sửa Entity/Repository/shared DB constraint,
-        * controller Driver tự lọc trùng theo LicensePlateUtil.normalize().
-        */
+         * NOTE Quảng - Driver scope:
+         * DB có thể đã tồn tại dữ liệu cũ dạng:
+         * - 51H12345
+         * - 51H-123.45
+         *
+         * Hai chuỗi này là cùng một biển số sau khi normalize.
+         * Vì không được sửa Entity/Repository/shared DB constraint,
+         * controller Driver tự lọc trùng theo LicensePlateUtil.normalize().
+         */
         List<String> plates = userLicensePlateRepository.findByUser(currentUser)
                 .stream()
                 .map(UserLicensePlate::getLicensePlate)
@@ -116,8 +120,7 @@ public class DriverController {
                         LicensePlateUtil::normalize,
                         LicensePlateUtil::normalize,
                         (oldValue, newValue) -> oldValue,
-                        java.util.LinkedHashMap::new
-                ))
+                        java.util.LinkedHashMap::new))
                 .values()
                 .stream()
                 .toList();
@@ -156,25 +159,32 @@ public class DriverController {
     @PostMapping("/driver/plates")
     public ApiResponse<String> addPlate(
             Authentication authentication,
-            @Valid @RequestBody DriverPlateRequest request
-    ) {
+            @Valid @RequestBody DriverPlateRequest request) {
         User currentUser = getCurrentUser(authentication);
         String licensePlate = normalizeAndValidatePlate(request.getLicensePlate());
 
         /*
-        * NOTE Quảng - Driver scope:
-        * Không so sánh raw string vì:
-        * - 51H12345
-        * - 51H-123.45
-        * - 51H 123.45
-        * đều là cùng một biển số.
-        */
+         * NOTE Quảng - Driver scope:
+         * Không so sánh raw string vì:
+         * - 51H12345
+         * - 51H-123.45
+         * - 51H 123.45
+         * đều là cùng một biển số.
+         */
         boolean plateExists = userLicensePlateRepository.findByUser(currentUser)
                 .stream()
                 .anyMatch(item -> LicensePlateUtil.normalize(item.getLicensePlate()).equals(licensePlate));
-
         if (plateExists) {
-            throw new BusinessException("Biển số đã tồn tại");
+            throw new BusinessException("Biển số đã tồn tại trong tài khoản của bạn");
+        }
+        boolean plateBelongsToAnotherUser = userLicensePlateRepository.findAll()
+                .stream()
+                .filter(item -> item.getUser() != null)
+                .filter(item -> !item.getUser().getId().equals(currentUser.getId()))
+                .anyMatch(item -> LicensePlateUtil.normalize(item.getLicensePlate()).equals(licensePlate));
+
+        if (plateBelongsToAnotherUser) {
+            throw new BusinessException("Biển số này đã được đăng ký bởi tài khoản khác");
         }
 
         UserLicensePlate userLicensePlate = UserLicensePlate.builder()
@@ -186,7 +196,6 @@ public class DriverController {
 
         return ApiResponse.success("Thêm biển số thành công", licensePlate);
     }
-    
 
     /**
      * Xóa biển số của driver đang đăng nhập.
@@ -202,10 +211,12 @@ public class DriverController {
     @DeleteMapping("/driver/plates")
     public ApiResponse<String> deletePlate(
             Authentication authentication,
-            @RequestParam String plate
-    ) {
+            @RequestParam String plate) {
         User currentUser = getCurrentUser(authentication);
         String licensePlate = normalizeAndValidatePlate(plate);
+
+        ensurePlateHasNoActiveReservation(currentUser, licensePlate);
+        ensurePlateHasNoActiveOrPendingPass(currentUser, licensePlate);
 
         UserLicensePlate userLicensePlate = userLicensePlateRepository.findByUser(currentUser)
                 .stream()
@@ -218,6 +229,45 @@ public class DriverController {
         return ApiResponse.success("Xóa biển số thành công", licensePlate);
     }
 
+    /**
+     * Không cho Driver xóa biển số nếu biển số đó còn đặt chỗ chưa hoàn tất.
+     *
+     * Trạng thái bị chặn:
+     * - PENDING
+     * - CONFIRMED
+     */
+    private void ensurePlateHasNoActiveReservation(User user, String licensePlate) {
+        boolean existed = reservationRepository.findByUserOrderByCreatedAtDesc(user)
+                .stream()
+                .filter(reservation -> reservation.getStatus() == Reservation.ReservationStatus.PENDING
+                        || reservation.getStatus() == Reservation.ReservationStatus.CONFIRMED)
+                .anyMatch(
+                        reservation -> LicensePlateUtil.normalize(reservation.getLicensePlate()).equals(licensePlate));
+
+        if (existed) {
+            throw new BusinessException("Không thể xóa biển số đang có đặt chỗ chưa hoàn tất");
+        }
+    }
+
+    /**
+     * Không cho Driver xóa biển số nếu biển số đó còn vé gửi xe đang hoạt động
+     * hoặc đang chờ thanh toán.
+     *
+     * Trạng thái bị chặn:
+     * - ACTIVE
+     * - PENDING_PAYMENT
+     */
+    private void ensurePlateHasNoActiveOrPendingPass(User user, String licensePlate) {
+        boolean existed = parkingPassRepository.findByUser(user)
+                .stream()
+                .filter(pass -> LicensePlateUtil.normalize(pass.getLicensePlate()).equals(licensePlate))
+                .anyMatch(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE
+                        || pass.getStatus() == ParkingPass.PassStatus.PENDING_PAYMENT);
+
+        if (existed) {
+            throw new BusinessException("Không thể xóa biển số đang có vé gửi xe hoạt động hoặc chờ thanh toán");
+        }
+    }
 
     // =========================================================
     // DRIVER PARKING PASS APIs
@@ -255,10 +305,10 @@ public class DriverController {
      *
      * Body FE gửi lên thường có:
      * {
-     *   "buildingId": "...",
-     *   "vehicleTypeId": "...",
-     *   "licensePlate": "30A-999.88",
-     *   "passType": "MONTHLY"
+     * "buildingId": "...",
+     * "vehicleTypeId": "...",
+     * "licensePlate": "30A-999.88",
+     * "passType": "MONTHLY"
      * }
      *
      * NOTE:
@@ -270,8 +320,7 @@ public class DriverController {
     @Transactional
     public ApiResponse<Map<String, Object>> registerParkingPass(
             Authentication authentication,
-            @Valid @RequestBody RegisterParkingPassRequest request
-    ) {
+            @Valid @RequestBody RegisterParkingPassRequest request) {
         User currentUser = getCurrentUser(authentication);
         String licensePlate = normalizeAndValidatePlate(request.getLicensePlate());
 
@@ -306,26 +355,27 @@ public class DriverController {
         ParkingPass savedPass = parkingPassRepository.save(parkingPass);
 
         Map<String, Object> data = toParkingPassResponse(savedPass);
-        data.put("paymentUrl", buildFakeVnPayReturnUrl(savedPass));
+        data.put("paymentStatus", "PENDING_PAYMENT");
+        data.put("paymentUrl", null);
+        data.put("note",
+                "Vé đã được tạo đúng ở trạng thái chờ thanh toán. URL VNPay thật sẽ được module Payment của Toàn tạo sau khi merge.");
 
         return ApiResponse.success("Tạo vé gửi xe thành công, chờ thanh toán", data);
     }
 
     /**
-     * Tạo lại link thanh toán cho vé đã đăng ký nhưng chưa thanh toán.
+     * Tiếp tục thanh toán vé đã đăng ký nhưng chưa thanh toán.
      *
-     * Method: POST
-     * Endpoint: /api/v1/driver/parking-passes/{passId}/pay
-     *
-     * NOTE:
-     * API này giúp FE có nút "Thanh toán tiếp".
-     * Hiện tại trả về paymentUrl demo.
+     * NOTE Quảng - Driver scope:
+     * - Driver chỉ validate vé của chính mình và trạng thái PENDING_PAYMENT.
+     * - Không tạo fake VNPay URL.
+     * - VNPay URL thật sẽ do PaymentController/VnPayService của Toàn xử lý sau khi
+     * merge.
      */
     @PostMapping("/driver/parking-passes/{passId}/pay")
     public ApiResponse<Map<String, Object>> continueParkingPassPayment(
             Authentication authentication,
-            @PathVariable UUID passId
-    ) {
+            @PathVariable UUID passId) {
         User currentUser = getCurrentUser(authentication);
 
         ParkingPass parkingPass = parkingPassRepository.findById(passId)
@@ -339,186 +389,65 @@ public class DriverController {
             throw new BusinessException("Vé này đã được kích hoạt");
         }
 
-        Map<String, Object> data = toParkingPassResponse(parkingPass);
-        data.put("paymentUrl", buildFakeVnPayReturnUrl(parkingPass));
+        if (parkingPass.getStatus() == ParkingPass.PassStatus.CANCELLED) {
+            throw new BusinessException("Vé này đã bị hủy");
+        }
 
-        return ApiResponse.success("Tạo link thanh toán thành công", data);
+        if (parkingPass.getStatus() == ParkingPass.PassStatus.EXPIRED) {
+            throw new BusinessException("Vé này đã hết hạn");
+        }
+
+        if (parkingPass.getStatus() != ParkingPass.PassStatus.PENDING_PAYMENT) {
+            throw new BusinessException("Chỉ có thể thanh toán vé đang chờ thanh toán");
+        }
+
+        Map<String, Object> data = toParkingPassResponse(parkingPass);
+        data.put("paymentStatus", "PENDING_PAYMENT");
+        data.put("paymentUrl", null);
+        data.put("note",
+                "Vé hợp lệ và đang chờ thanh toán. Module Payment/VNPay của Toàn sẽ tạo paymentUrl thật sau khi merge.");
+
+        return ApiResponse.success("Vé hợp lệ, chờ module Payment tạo URL thanh toán", data);
     }
 
     /**
- * Nhận kết quả thanh toán VNPay demo cho Parking Pass của Driver.
- *
- * Method: GET
- * Endpoints:
- * - /api/v1/driver/parking-passes/vnpay-return
- * - /api/v1/driver/payments/vnpay-return
- *
- * NOTE Quảng - Driver scope:
- * - Chỉ xử lý thanh toán vé tháng/quý/năm của Driver.
- * - Không xử lý thanh toán phiên gửi xe/check-out vì phần đó thuộc Staff/Payment.
- * - Khi Toàn merge PaymentController/VnPayService thật thì endpoint /driver/payments/vnpay-return
- *   có thể chuyển về module Payment chung.
- */
-    @GetMapping({
-        "/driver/parking-passes/vnpay-return",
-        "/driver/payments/vnpay-return"
-    })
+     * Hủy đơn vé tháng/quý/năm đang chờ thanh toán.
+     *
+     * Method: DELETE
+     * Endpoint: /api/v1/driver/parking-passes/{passId}/cancel
+     *
+     * NOTE Quảng - Driver scope:
+     * Driver chỉ được hủy đơn của chính mình khi status là PENDING_PAYMENT.
+     */
+    @DeleteMapping("/driver/parking-passes/{passId}/cancel")
     @Transactional
-    public ApiResponse<Map<String, Object>> handleParkingPassVnPayReturn(
+    public ApiResponse<String> cancelPendingParkingPass(
             Authentication authentication,
-            @RequestParam Map<String, String> params
-    ) {
+            @PathVariable UUID passId) {
         User currentUser = getCurrentUser(authentication);
 
-        String responseCode = params.getOrDefault("vnp_ResponseCode", "");
-        String txnRef = params.getOrDefault("vnp_TxnRef", "");
+        ParkingPass pass = parkingPassRepository.findById(passId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy vé định kỳ"));
 
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("success", false);
-        data.put("paymentType", "PARKING_PASS");
-        data.put("txnRef", txnRef);
-        data.put("responseCode", responseCode);
-
-        if (!"00".equals(responseCode)) {
-            data.put("message", "Thanh toán thất bại hoặc bị hủy");
-            return ApiResponse.success("Thanh toán thất bại", data);
+        if (!pass.getUser().getId().equals(currentUser.getId())) {
+            throw new BusinessException("Bạn không có quyền hủy đơn thanh toán này");
         }
 
-        if (txnRef == null || !txnRef.startsWith("PASS-")) {
-            data.put("message", "Mã giao dịch không thuộc parking pass");
-            return ApiResponse.success("Không xác định được loại giao dịch", data);
+        if (pass.getStatus() != ParkingPass.PassStatus.PENDING_PAYMENT) {
+            throw new BusinessException("Chỉ có thể hủy đơn đang chờ thanh toán");
         }
 
-        UUID passId;
+        pass.setStatus(ParkingPass.PassStatus.CANCELLED);
+        parkingPassRepository.save(pass);
 
-        try {
-            passId = UUID.fromString(txnRef.replace("PASS-", ""));
-        } catch (IllegalArgumentException ex) {
-            throw new BusinessException("Mã giao dịch parking pass không hợp lệ");
-        }
-
-        ParkingPass parkingPass = parkingPassRepository.findById(passId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy vé gửi xe"));
-
-        if (!parkingPass.getUser().getId().equals(currentUser.getId())) {
-            throw new BusinessException("Bạn không có quyền xác nhận thanh toán vé này");
-        }
-
-        /*
-        * NOTE Quảng - Driver scope:
-        * Idempotent callback: nếu user refresh trang return hoặc callback bị gọi lại,
-        * vé đã ACTIVE thì vẫn trả success, không báo lỗi.
-        */
-        if (parkingPass.getStatus() != ParkingPass.PassStatus.ACTIVE) {
-            parkingPass.setStatus(ParkingPass.PassStatus.ACTIVE);
-            parkingPass = parkingPassRepository.save(parkingPass);
-        }
-
-        data.put("success", true);
-        data.put("message", "Thanh toán thành công, vé đã được kích hoạt");
-        data.put("pass", toParkingPassResponse(parkingPass));
-
-        return ApiResponse.success("Xác nhận thanh toán parking pass thành công", data);
+        return ApiResponse.success("Hủy đơn thanh toán thành công", pass.getId().toString());
     }
-
-    /**
- * Nhận IPN VNPay demo cho Parking Pass.
- *
- * Method: GET
- * Endpoint: /api/v1/driver/payments/vnpay-ipn
- *
- * NOTE Quảng - Driver scope:
- * SecurityConfig hiện đã mở public endpoint này.
- * Bản demo chỉ xử lý PASS-* để không đụng checkout session của role khác.
- */
-@GetMapping("/driver/payments/vnpay-ipn")
-@PreAuthorize("permitAll()")
-@Transactional
-public ApiResponse<Map<String, Object>> handleParkingPassVnPayIpn(
-        @RequestParam Map<String, String> params
-) {
-    String responseCode = params.getOrDefault("vnp_ResponseCode", "");
-    String txnRef = params.getOrDefault("vnp_TxnRef", "");
-
-    Map<String, Object> data = new LinkedHashMap<>();
-    data.put("success", false);
-    data.put("paymentType", "PARKING_PASS");
-    data.put("txnRef", txnRef);
-    data.put("responseCode", responseCode);
-
-    if (!"00".equals(responseCode)) {
-        data.put("message", "Thanh toán thất bại hoặc bị hủy");
-        return ApiResponse.success("Thanh toán thất bại", data);
-    }
-
-    if (txnRef == null || !txnRef.startsWith("PASS-")) {
-        data.put("message", "IPN này không thuộc parking pass của Driver");
-        return ApiResponse.success("Bỏ qua IPN không thuộc parking pass", data);
-    }
-
-    UUID passId;
-
-    try {
-        passId = UUID.fromString(txnRef.replace("PASS-", ""));
-    } catch (IllegalArgumentException ex) {
-        throw new BusinessException("Mã giao dịch parking pass không hợp lệ");
-    }
-
-    ParkingPass parkingPass = parkingPassRepository.findById(passId)
-            .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy vé gửi xe"));
-
-    if (parkingPass.getStatus() != ParkingPass.PassStatus.ACTIVE) {
-        parkingPass.setStatus(ParkingPass.PassStatus.ACTIVE);
-        parkingPass = parkingPassRepository.save(parkingPass);
-    }
-
-    data.put("success", true);
-    data.put("message", "IPN thành công, vé đã được kích hoạt");
-    data.put("pass", toParkingPassResponse(parkingPass));
-
-    return ApiResponse.success("Xác nhận IPN parking pass thành công", data);
-}
-
-
-    /**
- * Hủy đơn vé tháng/quý/năm đang chờ thanh toán.
- *
- * Method: DELETE
- * Endpoint: /api/v1/driver/parking-passes/{passId}/cancel
- *
- * NOTE Quảng - Driver scope:
- * Driver chỉ được hủy đơn của chính mình khi status là PENDING_PAYMENT.
- */
-@DeleteMapping("/driver/parking-passes/{passId}/cancel")
-@Transactional
-public ApiResponse<String> cancelPendingParkingPass(
-        Authentication authentication,
-        @PathVariable UUID passId
-) {
-    User currentUser = getCurrentUser(authentication);
-
-    ParkingPass pass = parkingPassRepository.findById(passId)
-            .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy vé định kỳ"));
-
-    if (!pass.getUser().getId().equals(currentUser.getId())) {
-        throw new BusinessException("Bạn không có quyền hủy đơn thanh toán này");
-    }
-
-    if (pass.getStatus() != ParkingPass.PassStatus.PENDING_PAYMENT) {
-        throw new BusinessException("Chỉ có thể hủy đơn đang chờ thanh toán");
-    }
-
-    pass.setStatus(ParkingPass.PassStatus.CANCELLED);
-    parkingPassRepository.save(pass);
-
-    return ApiResponse.success("Hủy đơn thanh toán thành công", pass.getId().toString());
-}
     // =========================================================
     // PRIVATE HELPER METHODS
     // Các hàm phụ trợ bên dưới giúp controller gọn hơn.
     // =========================================================
 
-     /**
+    /**
      * Chuyển entity ParkingPass thành Map để FE dễ đọc.
      *
      * NOTE:
@@ -549,31 +478,31 @@ public ApiResponse<String> cancelPendingParkingPass(
     }
 
     /**
- * Tìm giá MONTHLY theo building + vehicleType.
- *
- * NOTE Quảng - Driver scope:
- * Không thêm method custom vào PricingRuleRepository vì đây là file chung.
- * Dùng findAll rồi lọc trong controller để tránh conflict khi merge.
- */
-private BigDecimal findMonthlyPrice(Building building, VehicleType vehicleType) {
-    return pricingRuleRepository.findAll()
-            .stream()
-            .filter(rule -> rule.getBuilding() != null)
-            .filter(rule -> rule.getVehicleType() != null)
-            .filter(rule -> rule.getBuilding().getId().equals(building.getId()))
-            .filter(rule -> rule.getVehicleType().getId().equals(vehicleType.getId()))
-            .filter(rule -> rule.getPricingType() == PricingRule.PricingType.MONTHLY)
-            .map(PricingRule::getPricePerUnit)
-            .findFirst()
-            .orElseThrow(() -> new BusinessException("Chưa cấu hình giá vé tháng cho loại xe này"));
-}
+     * Tìm giá MONTHLY theo building + vehicleType.
+     *
+     * NOTE Quảng - Driver scope:
+     * Không thêm method custom vào PricingRuleRepository vì đây là file chung.
+     * Dùng findAll rồi lọc trong controller để tránh conflict khi merge.
+     */
+    private BigDecimal findMonthlyPrice(Building building, VehicleType vehicleType) {
+        return pricingRuleRepository.findAll()
+                .stream()
+                .filter(rule -> rule.getBuilding() != null)
+                .filter(rule -> rule.getVehicleType() != null)
+                .filter(rule -> rule.getBuilding().getId().equals(building.getId()))
+                .filter(rule -> rule.getVehicleType().getId().equals(vehicleType.getId()))
+                .filter(rule -> rule.getPricingType() == PricingRule.PricingType.MONTHLY)
+                .map(PricingRule::getPricePerUnit)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("Chưa cấu hình giá vé tháng cho loại xe này"));
+    }
 
     /**
      * Tính tiền vé dựa theo loại vé.
      *
-     * MONTHLY   = 1 tháng
+     * MONTHLY = 1 tháng
      * QUARTERLY = 3 tháng
-     * YEARLY    = 12 tháng, giảm 10% demo
+     * YEARLY = 12 tháng, giảm 10% demo
      */
     private BigDecimal calculatePassFee(BigDecimal monthlyPrice, ParkingPass.PassType passType) {
         if (monthlyPrice == null) {
@@ -615,34 +544,10 @@ private BigDecimal findMonthlyPrice(Building building, VehicleType vehicleType) 
     }
 
     /**
-     * Tạo URL thanh toán demo.
+     * Kiểm tra biển số dùng để mua gói có thuộc tài khoản Driver hay không.
      *
-     * NOTE:
-     * Đây không phải VNPay thật.
-     * Mục tiêu là để FE không bị gãy luồng khi bấm thanh toán vé.
-     */
-    private String buildFakeVnPayReturnUrl(ParkingPass pass) {
-        long amount = pass.getFee() == null
-                ? 0L
-                : pass.getFee().multiply(BigDecimal.valueOf(100)).longValue();
-
-        return "/driver/payment-return"
-                + "?vnp_ResponseCode=00"
-                + "&vnp_TxnRef=PASS-" + pass.getId()
-                + "&vnp_Amount=" + amount
-                + "&vnp_BankCode=DEMO"
-                + "&vnp_TransactionNo=" + System.currentTimeMillis()
-                + "&vnp_PayDate=" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-    }
-
-    /**
-     * Đảm bảo biển số thuộc tài khoản Driver.
-     *
-     * NOTE:
-     * Khi đăng ký parking pass, nếu driver nhập biển số mới,
-     * hệ thống tự thêm biển số đó vào hồ sơ driver.
-     *
-     * Việc này vẫn đúng role Driver vì driver đang quản lý phương tiện của chính mình.
+     * Không tự động thêm biển số ở đây, vì Driver đã có API riêng:
+     * POST /api/v1/driver/plates
      */
     private void ensurePlateBelongsToUser(User user, String licensePlate) {
         boolean exists = userLicensePlateRepository.findByUser(user)
@@ -650,41 +555,31 @@ private BigDecimal findMonthlyPrice(Building building, VehicleType vehicleType) 
                 .anyMatch(item -> LicensePlateUtil.normalize(item.getLicensePlate()).equals(licensePlate));
 
         if (!exists) {
-            UserLicensePlate userLicensePlate = UserLicensePlate.builder()
-                    .user(user)
-                    .licensePlate(licensePlate)
-                    .build();
-
-            userLicensePlateRepository.save(userLicensePlate);
+            throw new BusinessException("Biển số chưa được đăng ký bởi driver này");
         }
     }
 
     /**
- * Kiểm tra driver không tạo trùng vé tháng/quý/năm cho cùng một biển số.
- *
- * NOTE Quảng - Driver scope:
- * Không sửa ParkingPassRepository vì đây là file shared.
- * Lọc bằng findByUser(user) để tránh conflict khi merge với team.
- */
-private void ensureNoActiveOrPendingPass(
-        User user,
-        String licensePlate,
-        ParkingPass.PassType passType
-) {
-    boolean existed = parkingPassRepository.findByUser(user)
-            .stream()
-            .filter(pass -> LicensePlateUtil.normalize(pass.getLicensePlate()).equals(licensePlate))
-            .filter(pass -> pass.getPassType() == passType)
-            .anyMatch(pass ->
-                    pass.getStatus() == ParkingPass.PassStatus.ACTIVE
-                            || pass.getStatus() == ParkingPass.PassStatus.PENDING_PAYMENT
-            );
+     * Kiểm tra driver không tạo trùng vé cho cùng một biển số.
+     *
+     * Quy tắc:
+     * - Một biển số chỉ nên có 1 vé ACTIVE hoặc PENDING_PAYMENT tại một thời điểm.
+     * - Không phân biệt MONTHLY/QUARTERLY/YEARLY vì mua chồng gói sẽ sai nghiệp vụ.
+     */
+    private void ensureNoActiveOrPendingPass(
+            User user,
+            String licensePlate,
+            ParkingPass.PassType passType) {
+        boolean existed = parkingPassRepository.findByUser(user)
+                .stream()
+                .filter(pass -> LicensePlateUtil.normalize(pass.getLicensePlate()).equals(licensePlate))
+                .anyMatch(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE
+                        || pass.getStatus() == ParkingPass.PassStatus.PENDING_PAYMENT);
 
-    if (existed) {
-        throw new BusinessException("Biển số này đã có vé cùng loại đang hoạt động hoặc đang chờ thanh toán");
+        if (existed) {
+            throw new BusinessException("Biển số này đã có vé đang hoạt động hoặc đang chờ thanh toán");
+        }
     }
-}
-
 
     /**
      * Lấy user đang đăng nhập từ JWT.
@@ -705,7 +600,7 @@ private void ensureNoActiveOrPendingPass(
      *
      * Ví dụ:
      * - "51F-123.45" -> "51F12345"
-     * - "51f 12345"  -> "51F12345"
+     * - "51f 12345" -> "51F12345"
      *
      * NOTE:
      * Dùng chung chuẩn với ReservationService để:

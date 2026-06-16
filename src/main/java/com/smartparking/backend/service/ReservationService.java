@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
+
 /**
  * ReservationService — Đặt giữ chỗ zone (Quảng phụ trách)
  *
@@ -61,8 +62,7 @@ public class ReservationService {
             ReservationRepository reservationRepository,
             ZoneRepository zoneRepository,
             VehicleTypeRepository vehicleTypeRepository,
-            UserLicensePlateRepository userLicensePlateRepository
-    ) {
+            UserLicensePlateRepository userLicensePlateRepository) {
         this.reservationRepository = reservationRepository;
         this.zoneRepository = zoneRepository;
         this.vehicleTypeRepository = vehicleTypeRepository;
@@ -109,6 +109,8 @@ public class ReservationService {
         if (!reservedTo.isAfter(reservedFrom)) {
             throw new BusinessException("Thời gian kết thúc phải sau thời gian bắt đầu");
         }
+
+        validateReservationWindow(reservedFrom, reservedTo);
 
         /*
          * NOTE Quảng - Driver reservation:
@@ -183,21 +185,25 @@ public class ReservationService {
         }
 
         Zone zone = reservation.getZone();
-// NOTE Quảng - Driver reservation:
-// Khi hủy đặt chỗ, giảm reservedCount an toàn và không cho âm.
-// Nếu zone đang FULL nhưng sau khi hủy còn chỗ thì trả về ACTIVE.
-int reservedCount = zone.getReservedCount() == null ? 0 : zone.getReservedCount();
-int currentCount = zone.getCurrentCount() == null ? 0 : zone.getCurrentCount();
-int capacity = zone.getCapacity() == null ? 0 : zone.getCapacity();
+        /*
+         * NOTE Quảng - Driver reservation:
+         * Khi hủy đặt chỗ, giảm reservedCount an toàn và không cho âm.
+         * Nếu zone đang FULL nhưng sau khi hủy còn chỗ thì trả về ACTIVE.
+         */
+        if (zone != null) {
+            int reservedCount = zone.getReservedCount() == null ? 0 : zone.getReservedCount();
+            int currentCount = zone.getCurrentCount() == null ? 0 : zone.getCurrentCount();
+            int capacity = zone.getCapacity() == null ? 0 : zone.getCapacity();
 
-zone.setReservedCount(Math.max(0, reservedCount - 1));
+            zone.setReservedCount(Math.max(0, reservedCount - 1));
 
-if (zone.getStatus() == Zone.ZoneStatus.FULL
-        && currentCount + zone.getReservedCount() < capacity) {
-    zone.setStatus(Zone.ZoneStatus.ACTIVE);
-}
+            if (zone.getStatus() == Zone.ZoneStatus.FULL
+                    && currentCount + zone.getReservedCount() < capacity) {
+                zone.setStatus(Zone.ZoneStatus.ACTIVE);
+            }
 
-zoneRepository.save(zone);
+            zoneRepository.save(zone);
+        }
         reservation.setStatus(Reservation.ReservationStatus.CANCELLED);
         Reservation savedReservation = reservationRepository.save(reservation);
 
@@ -212,7 +218,7 @@ zoneRepository.save(zone);
      * - 51F-123.45
      * - 51F12345
      * Stream + normalize giúp test Postman không bị lệch format.
-     */     
+     */
     private void validatePlateBelongsToUser(User user, String licensePlate) {
         boolean existed = userLicensePlateRepository.findByUser(user)
                 .stream()
@@ -259,36 +265,56 @@ zoneRepository.save(zone);
      * Kiểm tra biển số có đang có đặt chỗ chưa hoàn tất không.
      *
      * NOTE Quảng - Driver scope:
-     * Không dùng existsByUserAndLicensePlateAndStatusIn trực tiếp vì dữ liệu cũ có thể lệch format biển số.
+     * Không dùng existsByUserAndLicensePlateAndStatusIn trực tiếp vì dữ liệu cũ có
+     * thể lệch format biển số.
      */
     private void validatePlateHasNoActiveReservation(User user, String licensePlate) {
         boolean existed = reservationRepository.findByUserOrderByCreatedAtDesc(user)
                 .stream()
-                .filter(reservation ->
-                        reservation.getStatus() == Reservation.ReservationStatus.PENDING
-                                || reservation.getStatus() == Reservation.ReservationStatus.CONFIRMED
-                )
-                .anyMatch(reservation ->
-                        LicensePlateUtil.normalize(reservation.getLicensePlate()).equals(licensePlate)
-                );
+                .filter(reservation -> reservation.getStatus() == Reservation.ReservationStatus.PENDING
+                        || reservation.getStatus() == Reservation.ReservationStatus.CONFIRMED)
+                .anyMatch(
+                        reservation -> LicensePlateUtil.normalize(reservation.getLicensePlate()).equals(licensePlate));
 
         if (existed) {
             throw new BusinessException("Biển số đang có đặt chỗ chưa hoàn tất");
         }
     }
+
+    /**
+     * Validate khung thời gian đặt chỗ của Driver.
+     *
+     * Quy tắc:
+     * - Không cho đặt trong quá khứ.
+     * - Không cho giữ chỗ quá 2 giờ để tránh khóa zone quá lâu.
+     */
+    private void validateReservationWindow(LocalDateTime reservedFrom, LocalDateTime reservedTo) {
+        LocalDateTime now = LocalDateTime.now();
+
+        if (reservedFrom.isBefore(now.minusMinutes(1))) {
+            throw new BusinessException("Không thể đặt chỗ trong quá khứ");
+        }
+
+        if (reservedTo.isAfter(reservedFrom.plusHours(2))) {
+            throw new BusinessException("Thời gian giữ chỗ tối đa là 2 giờ");
+        }
+    }
+
     /**
      * Chuyển Entity Reservation sang DTO ReservationResponse.
      */
     private ReservationResponse toResponse(Reservation reservation) {
+        Zone zone = reservation.getZone();
+
         return ReservationResponse.builder()
                 .reservationId(reservation.getId())
                 .reservationCode(reservation.getReservationCode())
-                .zoneId(reservation.getZone().getId())
-                .zoneCode(reservation.getZone().getZoneCode())
-                .zoneName(reservation.getZone().getZoneName())
-                .floorName(reservation.getZone().getFloor().getFloorName())
-                .vehicleTypeId(reservation.getVehicleType().getId())
-                .vehicleTypeName(reservation.getVehicleType().getName())
+                .zoneId(zone != null ? zone.getId() : null)
+                .zoneCode(zone != null ? zone.getZoneCode() : null)
+                .zoneName(zone != null ? zone.getZoneName() : null)
+                .floorName(zone != null && zone.getFloor() != null ? zone.getFloor().getFloorName() : null)
+                .vehicleTypeId(reservation.getVehicleType() != null ? reservation.getVehicleType().getId() : null)
+                .vehicleTypeName(reservation.getVehicleType() != null ? reservation.getVehicleType().getName() : null)
                 .licensePlate(reservation.getLicensePlate())
                 .reservedFrom(reservation.getReservedFrom())
                 .reservedTo(reservation.getReservedTo())

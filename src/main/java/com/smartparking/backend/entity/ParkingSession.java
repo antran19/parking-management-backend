@@ -105,6 +105,18 @@ public class ParkingSession {
     @Column(nullable = false, length = 15)
     private SessionStatus status = SessionStatus.ACTIVE;
 
+    @Column(name = "entry_plate_image_url", length = 255)
+    private String entryPlateImageUrl;
+
+    @Column(name = "entry_face_image_url", length = 255)
+    private String entryFaceImageUrl;
+
+    @Column(name = "exit_plate_image_url", length = 255)
+    private String exitPlateImageUrl;
+
+    @Column(name = "exit_face_image_url", length = 255)
+    private String exitFaceImageUrl;
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 

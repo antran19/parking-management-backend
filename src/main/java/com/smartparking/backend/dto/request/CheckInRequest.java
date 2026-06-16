@@ -32,4 +32,7 @@ public class CheckInRequest {
 
     // Optional: ghi chú đặc biệt
     private String notes;
+
+    private String entryPlateImageUrl;
+    private String entryFaceImageUrl;
 }

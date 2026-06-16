@@ -55,10 +55,9 @@ public class ZoneSuggestionService {
     }
 
     /**
-    /*
      * Cập nhật giảm số lượng xe trong Zone khi xe đi ra.
      * Nếu Zone đang FULL và số lượng xe giảm xuống dưới sức chứa, chuyển trạng thái về ACTIVE.
-     * (Tạm thời đóng phục vụ Milestone 1 - Check-in)
+     */
     @Transactional
     public Zone exitZone(Zone zone) {
         if (zone.getCurrentCount() > 0) {
@@ -69,6 +68,5 @@ public class ZoneSuggestionService {
         }
         return zoneRepository.save(zone);
     }
-    */
 }
 

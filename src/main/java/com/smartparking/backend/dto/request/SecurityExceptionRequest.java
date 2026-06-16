@@ -15,5 +15,6 @@ public class SecurityExceptionRequest {
     private ExceptionType exceptionType;
 
     private String description;
+    private String licensePlate;
     private UUID handledByUserId;
 }

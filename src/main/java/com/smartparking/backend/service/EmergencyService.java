@@ -42,11 +42,11 @@ public class EmergencyService {
 
     // Tiêm phụ thuộc qua constructor
     public EmergencyService(EmergencyEventRepository emergencyEventRepository,
-                            BuildingRepository buildingRepository,
-                            UserRepository userRepository,
-                            GateRepository gateRepository,
-                            SystemSettingsRepository systemSettingsRepository,
-                            SimpMessagingTemplate messagingTemplate) {
+            BuildingRepository buildingRepository,
+            UserRepository userRepository,
+            GateRepository gateRepository,
+            SystemSettingsRepository systemSettingsRepository,
+            SimpMessagingTemplate messagingTemplate) {
         this.emergencyEventRepository = emergencyEventRepository;
         this.buildingRepository = buildingRepository;
         this.userRepository = userRepository;
@@ -94,7 +94,8 @@ public class EmergencyService {
         EmergencyEvent event = EmergencyEvent.builder()
                 .building(building)
                 .status(EmergencyEvent.EmergencyStatus.ACTIVE)
-                .reason(request.getReason() == null || request.getReason().isBlank() ? "EMERGENCY_SOS" : request.getReason())
+                .reason(request.getReason() == null || request.getReason().isBlank() ? "EMERGENCY_SOS"
+                        : request.getReason())
                 .notes(request.getNotes())
                 .activatedBy(activatedBy)
                 .activatedAt(LocalDateTime.now())
@@ -102,7 +103,7 @@ public class EmergencyService {
         event = emergencyEventRepository.save(event);
 
         EmergencyStatusResponse response = buildResponse(event, true);
-        broadcastEmergency(response, "ACTIVATED");
+        broadcastEmergencyStatus(response, "ACTIVATED");
 
         log.warn("SOS ACTIVATED: building={}, by={}", building.getName(), activatedBy.getEmail());
         return response;
@@ -130,7 +131,7 @@ public class EmergencyService {
         event = emergencyEventRepository.save(event);
 
         EmergencyStatusResponse response = buildResponse(event, false);
-        broadcastEmergency(response, "DEACTIVATED");
+        broadcastEmergencyStatus(response, "DEACTIVATED");
 
         log.info("SOS DEACTIVATED: building={}, by={}",
                 event.getBuilding() != null ? event.getBuilding().getName() : "ALL", deactivatedBy.getEmail());
@@ -139,16 +140,19 @@ public class EmergencyService {
 
     /**
      * Lấy trạng thái SOS hiện tại của hệ thống.
-     * Hàm này được Front-end gọi thường xuyên (ví dụ: mỗi khi load trang) để kiểm tra xem có đang có sự cố không.
+     * Hàm này được Front-end gọi thường xuyên (ví dụ: mỗi khi load trang) để kiểm
+     * tra xem có đang có sự cố không.
      */
     @Transactional(readOnly = true)
     public EmergencyStatusResponse getCurrentStatus() {
         return emergencyEventRepository
                 // Tìm sự kiện SOS gần nhất đang có trạng thái ACTIVE
                 .findFirstByStatusOrderByActivatedAtDesc(EmergencyEvent.EmergencyStatus.ACTIVE)
-                // Nếu tìm thấy (có sự kiện đang ACTIVE), dùng hàm buildResponse để trả về dữ liệu (kèm cờ active = true)
+                // Nếu tìm thấy (có sự kiện đang ACTIVE), dùng hàm buildResponse để trả về dữ
+                // liệu (kèm cờ active = true)
                 .map(event -> buildResponse(event, true))
-                // Nếu không tìm thấy (Optional empty), tự động trả về một Response mặc định báo hệ thống bình thường
+                // Nếu không tìm thấy (Optional empty), tự động trả về một Response mặc định báo
+                // hệ thống bình thường
                 .orElse(EmergencyStatusResponse.builder()
                         .active(false)
                         .message("Hệ thống đang hoạt động bình thường")
@@ -157,7 +161,8 @@ public class EmergencyService {
 
     /**
      * Kiểm tra xem tính năng SOS có đang được cho phép bật hay không.
-     * Quản trị viên (Admin) có thể tắt tính năng này trong phần cài đặt (SystemSettings).
+     * Quản trị viên (Admin) có thể tắt tính năng này trong phần cài đặt
+     * (SystemSettings).
      */
     @Transactional(readOnly = true)
     public boolean isSosEnabled() {
@@ -172,24 +177,28 @@ public class EmergencyService {
      */
     @Transactional
     public boolean updateSosEnabled(boolean enabled) {
-        // Tìm cấu hình hệ thống, nếu không có thì tạo một đối tượng SystemSettings mới tinh
+        // Tìm cấu hình hệ thống, nếu không có thì tạo một đối tượng SystemSettings mới
+        // tinh
         var settings = systemSettingsRepository.findAll().stream()
                 .findFirst()
-                .orElseGet(() -> systemSettingsRepository.save(com.smartparking.backend.entity.SystemSettings.builder().build()));
-        
+                .orElseGet(() -> systemSettingsRepository
+                        .save(com.smartparking.backend.entity.SystemSettings.builder().build()));
+
         // Cập nhật trạng thái bật/tắt
         settings.setSosEnabled(enabled);
-        
+
         // Lưu xuống DB và trả về kết quả
         return Boolean.TRUE.equals(systemSettingsRepository.save(settings).getSosEnabled());
     }
 
     /**
-     * Hàm nội bộ để kiểm tra nhanh: Hiện tại có đang trong tình trạng báo động (SOS) hay không?
+     * Hàm nội bộ để kiểm tra nhanh: Hiện tại có đang trong tình trạng báo động
+     * (SOS) hay không?
      */
     @Transactional(readOnly = true)
     public boolean isEmergencyActive() {
-        // Trả về true nếu tồn tại ít nhất 1 sự kiện SOS đang ACTIVE, ngược lại trả về false
+        // Trả về true nếu tồn tại ít nhất 1 sự kiện SOS đang ACTIVE, ngược lại trả về
+        // false
         return emergencyEventRepository
                 .findFirstByStatusOrderByActivatedAtDesc(EmergencyEvent.EmergencyStatus.ACTIVE)
                 .isPresent();
@@ -201,7 +210,8 @@ public class EmergencyService {
     @Transactional(readOnly = true)
     public void ensureNormalOperation() {
         if (isEmergencyActive()) {
-            throw new BusinessException(EMERGENCY_MESSAGE + ". Không thể thao tác bình thường cho đến khi Manager/Admin hủy SOS.");
+            throw new BusinessException(
+                    EMERGENCY_MESSAGE + ". Không thể thao tác bình thường cho đến khi Manager/Admin hủy SOS.");
         }
     }
 
@@ -241,7 +251,7 @@ public class EmergencyService {
     /**
      * Gửi cảnh báo sự kiện SOS qua WebSocket
      */
-    private void broadcastEmergency(EmergencyStatusResponse response, String action) {
+    private void broadcastEmergencyStatus(EmergencyStatusResponse response, String action) {
         try {
             Map<String, Object> message = new HashMap<>();
             message.put("type", "EMERGENCY_SOS");

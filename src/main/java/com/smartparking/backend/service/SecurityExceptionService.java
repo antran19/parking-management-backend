@@ -1,6 +1,7 @@
 package com.smartparking.backend.service;
 
 import com.smartparking.backend.dto.request.SecurityExceptionRequest;
+import com.smartparking.backend.dto.response.ExceptionLogResponse;
 import com.smartparking.backend.entity.ExceptionLog;
 import com.smartparking.backend.entity.ParkingSession;
 import com.smartparking.backend.entity.User;
@@ -18,8 +19,8 @@ import java.util.List;
  * SecurityExceptionService — Ghi nhận sự cố an ninh (Thiên phụ trách)
  *
  * TODO (Thiên): Implement:
- * - logException(request)     → Tạo ExceptionLog lưu vào DB
- * - getAllExceptions()        → Lấy danh sách sự cố (sắp xếp mới nhất trước)
+ * - logException(request) → Tạo ExceptionLog lưu vào DB
+ * - getAllExceptions() → Lấy danh sách sự cố (sắp xếp mới nhất trước)
  */
 @Service
 public class SecurityExceptionService {
@@ -30,8 +31,8 @@ public class SecurityExceptionService {
 
     // Constructor injection (Quy tắc bắt buộc)
     public SecurityExceptionService(ExceptionLogRepository exceptionLogRepository,
-                                    ParkingSessionRepository parkingSessionRepository,
-                                    UserRepository userRepository) {
+            ParkingSessionRepository parkingSessionRepository,
+            UserRepository userRepository) {
         this.exceptionLogRepository = exceptionLogRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.userRepository = userRepository;
@@ -41,7 +42,7 @@ public class SecurityExceptionService {
      * Tạo ExceptionLog lưu vào DB
      */
     @Transactional
-    public ExceptionLog logException(SecurityExceptionRequest request) {
+    public ExceptionLogResponse logException(SecurityExceptionRequest request) {
         ParkingSession session = null;
         if (request.getSessionId() != null) {
             session = parkingSessionRepository.findById(request.getSessionId())
@@ -58,18 +59,36 @@ public class SecurityExceptionService {
                 .session(session)
                 .exceptionType(request.getExceptionType())
                 .description(request.getDescription())
+                .licensePlate(request.getLicensePlate())
                 .handledBy(handledBy)
                 .resolvedAt(LocalDateTime.now())
                 .build();
 
-        return exceptionLogRepository.save(exceptionLog);
+        ExceptionLog saved = exceptionLogRepository.save(exceptionLog);
+        return mapToResponse(saved);
     }
 
     /**
      * Lấy danh sách sự cố (sắp xếp mới nhất trước)
      */
     @Transactional(readOnly = true)
-    public List<ExceptionLog> getAllExceptions() {
-        return exceptionLogRepository.findAllByOrderByResolvedAtDesc();
+    public List<ExceptionLogResponse> getAllExceptions() {
+        return exceptionLogRepository.findAllByOrderByResolvedAtDesc()
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    private ExceptionLogResponse mapToResponse(ExceptionLog entity) {
+        return ExceptionLogResponse.builder()
+                .id(entity.getId())
+                .sessionId(entity.getSession() != null ? entity.getSession().getId() : null)
+                .licensePlate(entity.getLicensePlate())
+                .exceptionType(entity.getExceptionType() != null ? entity.getExceptionType().name() : null)
+                .description(entity.getDescription())
+                .handledBy(entity.getHandledBy() != null ? entity.getHandledBy().getFullName() : null)
+                .resolvedAt(entity.getResolvedAt())
+                .createdAt(entity.getCreatedAt())
+                .build();
     }
 }

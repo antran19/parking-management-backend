@@ -8,12 +8,14 @@ import com.smartparking.backend.dto.request.SecurityExceptionRequest;
 import com.smartparking.backend.dto.response.ApiResponse;
 import com.smartparking.backend.dto.response.BlacklistPlateResponse;
 import com.smartparking.backend.dto.response.EmergencyStatusResponse;
+import com.smartparking.backend.dto.response.ExceptionLogResponse;
 import com.smartparking.backend.entity.ExceptionLog;
 import com.smartparking.backend.service.BlacklistService;
 import com.smartparking.backend.service.EmergencyService;
 import com.smartparking.backend.service.SecurityExceptionService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -54,14 +56,17 @@ public class SecurityController {
     private final SecurityExceptionService securityExceptionService;
     private final EmergencyService emergencyService;
     private final BlacklistService blacklistService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     // Constructor injection — theo quy tắc bắt buộc của project
     public SecurityController(SecurityExceptionService securityExceptionService,
             EmergencyService emergencyService,
-            BlacklistService blacklistService) {
+            BlacklistService blacklistService,
+            SimpMessagingTemplate messagingTemplate) {
         this.securityExceptionService = securityExceptionService;
         this.emergencyService = emergencyService;
         this.blacklistService = blacklistService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     // =====================================================================
@@ -73,19 +78,22 @@ public class SecurityController {
      * POST /api/v1/security/exceptions
      */
     @PostMapping("/exceptions")
-    public ResponseEntity<ApiResponse<ExceptionLog>> logException(
+    public ResponseEntity<ApiResponse<ExceptionLogResponse>> logException(
             @Valid @RequestBody SecurityExceptionRequest request) {
-        ExceptionLog exceptionLog = securityExceptionService.logException(request);
+        ExceptionLogResponse exceptionLog = securityExceptionService.logException(request);
         return ResponseEntity.ok(ApiResponse.success("Đã ghi nhận sự cố an ninh", exceptionLog));
     }
 
     /**
      * Lấy toàn bộ danh sách sự cố an ninh, mới nhất trước
      * GET /api/v1/security/exceptions
+     * 
+     * đã test postman http://localhost:8080/api/v1/security/exceptions
+     * 
      */
     @GetMapping("/exceptions")
-    public ResponseEntity<ApiResponse<List<ExceptionLog>>> getAllExceptions() {
-        List<ExceptionLog> list = securityExceptionService.getAllExceptions();
+    public ResponseEntity<ApiResponse<List<ExceptionLogResponse>>> getAllExceptions() {
+        List<ExceptionLogResponse> list = securityExceptionService.getAllExceptions();
         return ResponseEntity.ok(ApiResponse.success(list));
     }
 
@@ -96,6 +104,10 @@ public class SecurityController {
     /**
      * Kích hoạt SOS khẩn cấp — mở toàn bộ barrier
      * POST /api/v1/security/emergency/activate
+     * 
+     * ĐÃ TEST http://localhost:8080/api/v1/security/emergency/activate
+     * {
+     * }
      */
     @PostMapping("/emergency/activate")
     public ResponseEntity<ApiResponse<EmergencyStatusResponse>> activateEmergency(
@@ -107,6 +119,8 @@ public class SecurityController {
     /**
      * Hủy SOS đang hoạt động
      * POST /api/v1/security/emergency/deactivate
+     * 
+     * ĐÃ TEST http://localhost:8080/api/v1/security/emergency/deactivate
      */
     @PostMapping("/emergency/deactivate")
     public ResponseEntity<ApiResponse<EmergencyStatusResponse>> deactivateEmergency(
@@ -119,6 +133,8 @@ public class SecurityController {
      * Lấy trạng thái SOS hiện tại
      * GET /api/v1/security/emergency/status
      * Cho phép tất cả role xem được (SECURITY, STAFF, DRIVER, MANAGER, ADMIN)
+     * 
+     * ĐÃ TEST http://localhost:8080/api/v1/security/emergency/status
      */
     @GetMapping("/emergency/status")
     @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'DRIVER', 'MANAGER', 'ADMIN')")
@@ -196,15 +212,4 @@ public class SecurityController {
         return ResponseEntity.ok(ApiResponse.success("Đã thêm biển số vào danh sách đen", response));
     }
 
-    /**
-     * Gỡ một biển số xe khỏi danh sách đen (soft delete)
-     * DELETE /api/v1/security/blacklist/{id}
-     */
-    @DeleteMapping("/blacklist/{id}")
-    public ResponseEntity<ApiResponse<BlacklistPlateResponse>> removeBlacklistPlate(
-            @PathVariable UUID id,
-            @Valid @RequestBody BlacklistRemoveRequest request) {
-        BlacklistPlateResponse response = blacklistService.removeFromBlacklist(id, request);
-        return ResponseEntity.ok(ApiResponse.success("Đã gỡ biển số khỏi danh sách đen", response));
-    }
 }

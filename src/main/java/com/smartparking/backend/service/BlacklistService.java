@@ -93,33 +93,9 @@ public class BlacklistService {
         BlacklistPlateResponse response = toResponse(blacklistPlateRepository.save(blacklistPlate));
 
         // Phát sự kiện qua WebSocket báo có biển số mới được thêm
-        broadcastBlacklistChange("ADDED", response);
+        broadcastBlacklistUpdate("ADDED", response);
 
         log.info("Đã thêm vào Blacklist: {} bởi {}", request.getLicensePlate(), addedBy.getEmail());
-        return response;
-    }
-
-    /**
-     * Gỡ bỏ một biển số khỏi blacklist (Soft delete) và broadcast realtime
-     */
-    @Transactional
-    public BlacklistPlateResponse removeFromBlacklist(UUID id, BlacklistRemoveRequest request) {
-        BlacklistPlate blacklistPlate = blacklistPlateRepository.findById(id)
-                .orElseThrow(() -> new BusinessException("Biển số blacklist không tồn tại"));
-
-        User removedBy = userRepository.findById(request.getRemovedByUserId())
-                .orElseThrow(() -> new BusinessException("Người thực hiện gỡ không tồn tại"));
-
-        blacklistPlate.setIsActive(false);
-        blacklistPlate.setRemovedBy(removedBy);
-        blacklistPlate.setRemovedAt(LocalDateTime.now());
-
-        BlacklistPlateResponse response = toResponse(blacklistPlateRepository.save(blacklistPlate));
-
-        // Phát sự kiện qua WebSocket báo biển số đã bị gỡ
-        broadcastBlacklistChange("REMOVED", response);
-
-        log.info("Đã gỡ khỏi Blacklist: {} bởi {}", blacklistPlate.getLicensePlate(), removedBy.getEmail());
         return response;
     }
 
@@ -139,6 +115,20 @@ public class BlacklistService {
     public boolean isBlacklisted(String licensePlate) {
         String normalizedPlate = LicensePlateUtil.normalize(licensePlate);
         return blacklistPlateRepository.existsByNormalizedPlateAndIsActiveTrue(normalizedPlate);
+    }
+
+    /**
+     * Đảm bảo biển số xe không nằm trong danh sách đen, nếu có thì văng lỗi
+     * BusinessException.
+     * Hàm này được các Service Check-in dùng để tự động chặn xe.
+     * 
+     * @param licensePlate Biển số xe cần kiểm tra
+     */
+    public void ensurePlateNotBlacklisted(String licensePlate) {
+        if (isBlacklisted(licensePlate)) {
+            throw new BusinessException(
+                    "Xe mang biển số " + licensePlate + " đang nằm trong danh sách đen, từ chối phục vụ.");
+        }
     }
 
     /**
@@ -231,7 +221,7 @@ public class BlacklistService {
      * @param action Hành động thực hiện ("ADDED" hoặc "REMOVED")
      * @param data   Dữ liệu biển số xe vừa thao tác dưới dạng DTO
      */
-    private void broadcastBlacklistChange(String action, BlacklistPlateResponse data) {
+    private void broadcastBlacklistUpdate(String action, BlacklistPlateResponse data) {
         try {
             Map<String, Object> payload = new HashMap<>();
             payload.put("action", action);

@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
  * kiểm tra trạng thái SOS mà không cần đăng nhập.
  */
 @RestController
-@RequestMapping("/api/v1/public/emergency")
+@RequestMapping("/api/v1/emergency")
 public class EmergencyPublicController {
 
     private final EmergencyService emergencyService;
@@ -27,7 +27,7 @@ public class EmergencyPublicController {
 
     /**
      * Lấy trạng thái SOS hiện tại (không yêu cầu token)
-     * GET /api/v1/public/emergency/status
+     * GET /api/v1/emergency/status
      */
     @GetMapping("/status")
     public ResponseEntity<ApiResponse<EmergencyStatusResponse>> getPublicEmergencyStatus() {

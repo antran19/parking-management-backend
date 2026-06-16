@@ -9,4 +9,6 @@ import java.util.UUID;
 @Repository
 public interface ExceptionLogRepository extends JpaRepository<ExceptionLog, UUID> {
     java.util.List<ExceptionLog> findAllByOrderByResolvedAtDesc();
+
+    java.util.List<ExceptionLog> findByCreatedAtBetween(java.time.LocalDateTime from, java.time.LocalDateTime to);
 }

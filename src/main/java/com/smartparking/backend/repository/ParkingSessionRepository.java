@@ -17,4 +17,6 @@ public interface ParkingSessionRepository extends JpaRepository<ParkingSession, 
     Optional<ParkingSession> findByLicensePlateAndStatus(String licensePlate, SessionStatus status);
     Page<ParkingSession> findByStatus(SessionStatus status, Pageable pageable);
     List<ParkingSession> findByLicensePlateOrderByEntryTimeDesc(String licensePlate);
+
+    long countByEntryTimeBetween(java.time.LocalDateTime from, java.time.LocalDateTime to);
 }

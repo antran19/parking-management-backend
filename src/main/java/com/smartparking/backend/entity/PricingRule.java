@@ -1,3 +1,4 @@
+
 package com.smartparking.backend.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -10,9 +11,13 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "pricing_rules",
-       uniqueConstraints = @UniqueConstraint(columnNames = {"building_id", "vehicle_type_id", "pricing_type"}))
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Table(name = "pricing_rules", uniqueConstraints = @UniqueConstraint(columnNames = { "building_id", "vehicle_type_id",
+        "pricing_type" }))
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class PricingRule {
 
     @Id
@@ -21,12 +26,12 @@ public class PricingRule {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "building_id", nullable = false)
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
     private Building building;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "vehicle_type_id", nullable = false)
-    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
     private VehicleType vehicleType;
 
     @Enumerated(EnumType.STRING)

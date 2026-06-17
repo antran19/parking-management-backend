@@ -25,7 +25,7 @@ public class ExceptionLog {
     private ParkingSession session;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "exception_type", nullable = false, length = 20)
+    @Column(name = "exception_type", nullable = false, length = 30)
     private ExceptionType exceptionType;
 
     @Column(name = "license_plate", length = 20)

@@ -1,6 +1,8 @@
 package com.smartparking.backend.repository;
 
 import com.smartparking.backend.entity.Payment;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,7 +18,15 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     List<Payment> findByReferenceTypeAndReferenceId(String referenceType, UUID referenceId);
 
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = :status AND p.paidAt BETWEEN :from AND :to")
-    BigDecimal sumAmountByStatusAndPaidAtBetween(@Param("status") Payment.PaymentStatus status,
-                                                 @Param("from") LocalDateTime from,
-                                                 @Param("to") LocalDateTime to);
+    BigDecimal sumAmountByStatusAndPaidAtBetween(
+            @Param("status") Payment.PaymentStatus status,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to
+    );
+
+    // Lấy danh sách payment trong khoảng thời gian (dùng để nhóm theo ngày/tháng/năm ở Service)
+    List<Payment> findByPaidAtBetween(LocalDateTime from, LocalDateTime to);
+
+    // Phân trang danh sách payment để xem chi tiết giao dịch
+    Page<Payment> findAll(Pageable pageable);
 }

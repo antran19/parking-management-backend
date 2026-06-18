@@ -1,9 +1,18 @@
 package com.smartparking.backend.service;
 
 import com.smartparking.backend.dto.request.SecurityExceptionRequest;
-import com.smartparking.backend.entity.*;
-import com.smartparking.backend.repository.*;
+import com.smartparking.backend.entity.ExceptionLog;
+import com.smartparking.backend.entity.ParkingSession;
+import com.smartparking.backend.entity.User;
+import com.smartparking.backend.exception.BusinessException;
+import com.smartparking.backend.repository.ExceptionLogRepository;
+import com.smartparking.backend.repository.ParkingSessionRepository;
+import com.smartparking.backend.repository.UserRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * SecurityExceptionService — Ghi nhận sự cố an ninh (Thiên phụ trách)
@@ -15,6 +24,52 @@ import org.springframework.stereotype.Service;
 @Service
 public class SecurityExceptionService {
 
-    // TODO: Inject ExceptionLogRepository, ParkingSessionRepository, UserRepository
-    // TODO: Implement methods
+    private final ExceptionLogRepository exceptionLogRepository;
+    private final ParkingSessionRepository parkingSessionRepository;
+    private final UserRepository userRepository;
+
+    // Constructor injection (Quy tắc bắt buộc)
+    public SecurityExceptionService(ExceptionLogRepository exceptionLogRepository,
+                                    ParkingSessionRepository parkingSessionRepository,
+                                    UserRepository userRepository) {
+        this.exceptionLogRepository = exceptionLogRepository;
+        this.parkingSessionRepository = parkingSessionRepository;
+        this.userRepository = userRepository;
+    }
+
+    /**
+     * Tạo ExceptionLog lưu vào DB
+     */
+    @Transactional
+    public ExceptionLog logException(SecurityExceptionRequest request) {
+        ParkingSession session = null;
+        if (request.getSessionId() != null) {
+            session = parkingSessionRepository.findById(request.getSessionId())
+                    .orElseThrow(() -> new BusinessException("Session không tồn tại"));
+        }
+
+        User handledBy = null;
+        if (request.getHandledByUserId() != null) {
+            handledBy = userRepository.findById(request.getHandledByUserId())
+                    .orElseThrow(() -> new BusinessException("Người xử lý không tồn tại"));
+        }
+
+        ExceptionLog exceptionLog = ExceptionLog.builder()
+                .session(session)
+                .exceptionType(request.getExceptionType())
+                .description(request.getDescription())
+                .handledBy(handledBy)
+                .resolvedAt(LocalDateTime.now())
+                .build();
+
+        return exceptionLogRepository.save(exceptionLog);
+    }
+
+    /**
+     * Lấy danh sách sự cố (sắp xếp mới nhất trước)
+     */
+    @Transactional(readOnly = true)
+    public List<ExceptionLog> getAllExceptions() {
+        return exceptionLogRepository.findAllByOrderByResolvedAtDesc();
+    }
 }

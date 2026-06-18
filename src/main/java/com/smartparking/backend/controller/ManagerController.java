@@ -1,6 +1,9 @@
 package com.smartparking.backend.controller;
 
 import com.smartparking.backend.dto.response.*;
+import com.smartparking.backend.entity.Gate;
+import com.smartparking.backend.entity.PricingRule;
+import com.smartparking.backend.entity.Zone;
 import com.smartparking.backend.service.ManagerService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +15,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 /*
  * TODO (Toàn):
@@ -25,16 +30,14 @@ import java.util.UUID;
 *
 Method	            Endpoint	                                    Mục đích
 GET     	/api/v1/manager/dashboard	                    Tổng quan vận hành
-GET	        /api/v1/manager/reports/revenue	                Báo cáo doanh thu theo thời gian
-GET	        /api/v1/manager/reports/occupancy	            Báo cáo công suất zone/floor
-GET	        /api/v1/manager/reports/sessions	            Báo cáo lượt gửi xe
-GET	        /api/v1/manager/reports/payments	            Tổng hợp thanh toán
+GET	        /api/v1/manager/dashboard/revenue	                Báo cáo doanh thu theo thời gian
+GET	        /api/v1/manager/dashboard/occupancy	            Báo cáo công suất zone/floor
+GET	        /api/v1/manager/dashboard/sessions	            Báo cáo lượt gửi xe
+GET	        /api/v1/manager/dashboard/payments	            Tổng hợp thanh toán
 GET	        /api/v1/manager/security/incidents-summary	    Tổng hợp sự cố an ninh
 *
 *
 */
-
-
 @RestController
 @Tag(name = "Manager", description = "Manager APIs")
 @RequestMapping("/api/v1/manager")
@@ -42,9 +45,6 @@ GET	        /api/v1/manager/security/incidents-summary	    Tổng hợp sự c�
 @RequiredArgsConstructor
 public class ManagerController {
     private final ManagerService managerService;
-
-
-
     /*
     ===========================================================================================================
                                             DOANH THU
@@ -57,11 +57,11 @@ public class ManagerController {
             @RequestParam(required = false) String type,
 
             @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate from,
 
             @RequestParam(required = false)
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate to) {
 
         return ResponseEntity.ok(
@@ -70,8 +70,6 @@ public class ManagerController {
                 )
         );
     }
-
-
     /*
    =============================================================================================================
                                                      THANH TOÁN
@@ -84,15 +82,23 @@ public class ManagerController {
         if (d == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error("Payment not found"));
         return ResponseEntity.ok(ApiResponse.success(d));
     }
+    @GetMapping("/dashboard/payments")
+    public ResponseEntity<ApiResponse<List<PaymentDetailResponse>>> getPayments() {
+        List<PaymentDetailResponse> list = managerService.getPayments();
+        if (list == null) return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error("Payment not found"));
+        return ResponseEntity.ok(ApiResponse.success(list));
+    }
+
+
+
     /*
     ==============================================================================================================
                                                       CÔNG SUẤT
     ==============================================================================================================
     */
-
     //lấy công suất theo id tòa nhà(Cong suất mặc định), công suất hiện tại
     @GetMapping("/dashboard/buildings/{id}/occupancy")
-    public ResponseEntity<ApiResponse<OccupancyEntry>> getOccupanciesByBuilding(
+    public ResponseEntity<ApiResponse<BuildingOccupancyResponse>> getOccupanciesByBuilding(
             @PathVariable("id") UUID buildingId) {
 
         return ResponseEntity.ok(
@@ -103,7 +109,7 @@ public class ManagerController {
     }
 
     @GetMapping("/dashboard/floors/{id}/occupancy")
-    public ResponseEntity<ApiResponse<OccupancyEntry>> getOccupanciesFloor(
+    public ResponseEntity<ApiResponse<FloorOccupancyResponse>> getOccupanciesFloor(
             @PathVariable("id") UUID floorId) {
 
         return ResponseEntity.ok(
@@ -113,13 +119,11 @@ public class ManagerController {
         );
     }
 
-
     /*
     ========================================================================================================
                                              LƯỢT GỬI XE
     ========================================================================================================
     */
-
     //Lấy số liệu card tổng quan
     @GetMapping("/dashboard/visits")
     public ResponseEntity<ApiResponse<RevenueResponse>> getVisits(
@@ -133,14 +137,6 @@ public class ManagerController {
                 )
         );
     }
-    //?groupBy=day
-    //
-    //?groupBy=month
-    //
-    //?groupBy=year
-    //
-    //?from=2026-06-01&to=2026-06-15
-
     /*
     =============================================================================================================
                                                      SỰ CỐ AN NINH
@@ -156,4 +152,65 @@ public class ManagerController {
         SecurityIncidentSummary s = managerService.getSecuritySummary(from, to);
         return ResponseEntity.ok(ApiResponse.success(s));
     }
+    /*
+    =============================================================================================================
+                                                     CRUD ZONE
+    =============================================================================================================
+    */
+    @PostMapping("/zones")
+    public ResponseEntity<ApiResponse<Zone>> createZone(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(ApiResponse.success("Đã tạo zone", managerService.createZone(body)));
+    }
+
+    @PutMapping("/zones/{id}")
+    public ResponseEntity<ApiResponse<Zone>> updateZone(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật zone", managerService.updateZone(id, body)));
+    }
+
+    @DeleteMapping("/zones/{id}")
+    public ResponseEntity<ApiResponse<String>> deleteZone(@PathVariable UUID id) {
+        managerService.deleteZone(id);
+        return ResponseEntity.ok(ApiResponse.success("Đã xóa zone", id.toString()));
+    }
+    /*
+    =============================================================================================================
+                                                     CRUD PricingRule
+    =============================================================================================================
+    */
+    @PostMapping("/pricing-rules")
+    public ResponseEntity<ApiResponse<PricingRule>> createPricingRule(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(ApiResponse.success("Đã tạo bảng giá", managerService.createPricingRule(body)));
+    }
+
+    @PutMapping("/pricing-rules/{id}")
+    public ResponseEntity<ApiResponse<PricingRule>> updatePricingRule(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật bảng giá", managerService.updatePricingRule(id, body)));
+    }
+
+    @DeleteMapping("/pricing-rules/{id}")
+    public ResponseEntity<ApiResponse<String>> deletePricingRule(@PathVariable UUID id) {
+        managerService.deletePricingRule(id);
+        return ResponseEntity.ok(ApiResponse.success("Đã xóa bảng giá", id.toString()));
+    }
+    /*
+    =============================================================================================================
+                                                     CRUD GATE
+    =============================================================================================================
+    */
+    @PostMapping("/gate")
+    public ResponseEntity<ApiResponse<Gate>> createGate(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(ApiResponse.success("Đã tạo cổng", managerService.createGate(body)));
+    }
+
+    @PutMapping("/gate/{id}")
+    public ResponseEntity<ApiResponse<Gate>> updateGate(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật cổng", managerService.updateGate(id, body)));
+    }
+
+    @DeleteMapping("/gate/{id}")
+    public ResponseEntity<ApiResponse<String>> deleteGate(@PathVariable UUID id) {
+        managerService.deleteGate(id);
+        return ResponseEntity.ok(ApiResponse.success("Đã xóa cổng", id.toString()));
+    }
 }
+

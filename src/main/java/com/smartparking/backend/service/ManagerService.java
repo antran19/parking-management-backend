@@ -4,14 +4,16 @@ import com.smartparking.backend.dto.response.*;
 import com.smartparking.backend.entity.*;
 import com.smartparking.backend.entity.ExceptionLog.ExceptionType;
 import com.smartparking.backend.exception.BusinessException;
+import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.repository.*;
+import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class ManagerService {
@@ -22,23 +24,29 @@ public class ManagerService {
     private final ExceptionLogRepository exceptionLogRepository;
     private final BuildingRepository buildingRepository;  // thêm
     private final FloorRepository floorRepository;        // thêm
-
+    private final VehicleTypeRepository vehicleTypeRepository;
+    private final PricingRuleRepository pricingRuleRepository;
+    private final GateRepository gateRepository;
     // Cập nhật Constructor để Spring tự động tiêm (inject) các Repository vào
     public ManagerService(PaymentRepository paymentRepository,
                           ParkingSessionRepository parkingSessionRepository,
                           ZoneRepository zoneRepository,
                           ExceptionLogRepository exceptionLogRepository,
                           BuildingRepository buildingRepository,
-                          FloorRepository floorRepository) {
+                          FloorRepository floorRepository,
+                          VehicleTypeRepository vehicleTypeRepository,
+                          PricingRuleRepository pricingRuleRepository,
+                          GateRepository gateRepository) {
         this.paymentRepository = paymentRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
         this.exceptionLogRepository = exceptionLogRepository;
         this.buildingRepository = buildingRepository;
         this.floorRepository = floorRepository;
+        this.vehicleTypeRepository = vehicleTypeRepository;
+        this.pricingRuleRepository = pricingRuleRepository;
+        this.gateRepository = gateRepository;
     }
-
-
     /*
     ===========================================================================================================
                                             DOANH THU
@@ -47,7 +55,6 @@ public class ManagerService {
     /**
      * Lấy tổng doanh thu trong khoảng từ..đến (nếu null -> hôm nay)
      */
-
     public RevenueResponse getRevenueBetween(
             String type,
             LocalDate from,
@@ -106,16 +113,11 @@ public class ManagerService {
                 .currency("VND")
                 .build();
     }
-
-
-
     /*
     ========================================================================================================
                                              LƯỢT GỬI XE
     ========================================================================================================
     */
-
-
     public RevenueResponse getVisits(String type, LocalDate from, LocalDate to) {
 
         LocalDateTime start;
@@ -156,12 +158,8 @@ public class ManagerService {
                                                       CÔNG SUẤT
     ==============================================================================================================
     */
-
-
     // ManagerServiceImpl.java
-
-
-    public OccupancyEntry getBuildingOccupancy(UUID id) {
+    public BuildingOccupancyResponse  getBuildingOccupancy(UUID id) {
 
         Building building = buildingRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Building not found: " + id));
@@ -184,21 +182,17 @@ public class ManagerService {
 
         List<Floor> floors = floorRepository.findByBuildingId(id);
 
-        return OccupancyEntry.builder()
+        return BuildingOccupancyResponse.builder()
                 .id(id.toString())
                 .name(building.getName())
-                .level("building")
-                .defaultCapacity(totalCapacity)
-                .capacity(totalCapacity)
-                .currentOccupancy(totalOccupied)
+                .totalCapacity(totalCapacity)
+                .totalOccupied(totalOccupied)
                 .availableSlots(available)
                 .percent(percent)
                 .reportDate(LocalDate.now())
                 .build();
     }
-
-
-    public OccupancyEntry getFloorOccupancy(UUID id) {
+    public FloorOccupancyResponse  getFloorOccupancy(UUID id) {
 
         Floor floor = floorRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Floor not found: " + id));
@@ -219,21 +213,16 @@ public class ManagerService {
                 ? Math.round((totalOccupied * 100.0 / totalCapacity) * 10.0) / 10.0
                 : 0.0;
 
-        return OccupancyEntry.builder()
+        return FloorOccupancyResponse.builder()
                 .id(id.toString())
-                .name(floor.getFloorName())
-                .level("floor")
-                .defaultCapacity(totalCapacity)
+                .floorName(floor.getFloorName())
                 .capacity(totalCapacity)
-                .currentOccupancy(totalOccupied)
+                .occupied(totalOccupied)
                 .availableSlots(available)
                 .percent(percent)
                 .reportDate(LocalDate.now())
                 .build();
     }
-
-
-
     /*
     =============================================================================================================
                                                       THANH TOÁN
@@ -256,6 +245,21 @@ public class ManagerService {
                         .createdAt(p.getCreatedAt())
                         .build())
                 .orElse(null);
+    }
+    public List<PaymentDetailResponse> getPayments() {
+        return paymentRepository.findAll().stream()
+                .map(p -> PaymentDetailResponse.builder()
+                        .id(p.getId())
+                        .referenceType(p.getReferenceType())
+                        .referenceId(p.getReferenceId())
+                        .amount(p.getAmount())
+                        .paymentMethod(p.getPaymentMethod())
+                        .status(p.getStatus())
+                        .transactionId(p.getTransactionId())
+                        .paidAt(p.getPaidAt())
+                        .createdAt(p.getCreatedAt())
+                        .build())
+                .collect(Collectors.toList());
     }
      /*
     =============================================================================================================
@@ -291,4 +295,151 @@ public class ManagerService {
 
         return byType;
     }
+    /*
+    =============================================================================================================
+                                                     CRUD ZONE
+    =============================================================================================================
+    */
+
+    public Zone createZone(Map<String, Object> body) {
+        Floor floor = floorRepository.findById(uuid(body, "floorId"))
+                .orElseThrow(() -> new ResourceNotFoundException("Floor không tồn tại"));
+
+        VehicleType vehicleType = vehicleTypeRepository.findById(uuid(body, "vehicleTypeId"))
+                .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại"));
+
+        Zone zone = Zone.builder()
+                .floor(floor)
+                .vehicleType(vehicleType)
+                .zoneCode(text(body, "zoneCode"))
+                .zoneName(text(body, "zoneName"))
+                .capacity(number(body, "capacity", 0))
+                .currentCount(0)
+                .reservedCount(0)
+                .status(Zone.ZoneStatus.ACTIVE)
+                .build();
+
+        return zoneRepository.save(zone);
+    }
+
+    public Zone updateZone(UUID id, Map<String, Object> body) {
+        Zone zone = zoneRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Zone không tồn tại"));
+
+        if (body.containsKey("zoneName"))
+            zone.setZoneName(text(body, "zoneName"));
+        if (body.containsKey("capacity"))
+            zone.setCapacity(number(body, "capacity", zone.getCapacity()));
+        if (body.containsKey("status"))
+            zone.setStatus(Zone.ZoneStatus.valueOf(text(body, "status").toUpperCase()));
+
+        return zoneRepository.save(zone);
+    }
+    /*=============================================================================================================
+                                             CRUD PricingRule
+    =============================================================================================================*/
+    public PricingRule createPricingRule(Map<String, Object> body) {
+        Building building = buildingRepository.findById(uuid(body, "buildingId"))
+                .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
+
+        VehicleType vehicleType = vehicleTypeRepository.findById(uuid(body, "vehicleTypeId"))
+                .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại"));
+
+        PricingRule rule = PricingRule.builder()
+                .building(building)
+                .vehicleType(vehicleType)
+                .pricingType(PricingRule.PricingType.valueOf(
+                        textOrDefault(body, "pricingType", "HOURLY").toUpperCase()))
+                .pricePerUnit(decimal(body, "pricePerUnit", BigDecimal.ZERO))
+                .freeMinutes(number(body, "freeMinutes", 0))
+                .build();
+
+        return pricingRuleRepository.save(rule);
+    }
+
+    public PricingRule updatePricingRule(UUID id, Map<String, Object> body) {
+        PricingRule rule = pricingRuleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Bảng giá không tồn tại"));
+
+        if (body.containsKey("pricingType"))
+            rule.setPricingType(PricingRule.PricingType.valueOf(
+                    text(body, "pricingType").toUpperCase()));
+        if (body.containsKey("pricePerUnit"))
+            rule.setPricePerUnit(decimal(body, "pricePerUnit", rule.getPricePerUnit()));
+        if (body.containsKey("freeMinutes"))
+            rule.setFreeMinutes(number(body, "freeMinutes", rule.getFreeMinutes()));
+
+        return pricingRuleRepository.save(rule);
+    }
+
+    public void deletePricingRule(UUID id) {
+        pricingRuleRepository.deleteById(id);
+    }
+    /*=============================================================================================================
+                                             CRUD GATE
+    =============================================================================================================*/
+    @Transactional
+    public Gate createGate(Map<String, Object> body) {
+        Building building = buildingRepository.findById(uuid(body, "buildingId"))
+                .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
+
+        Gate gate = Gate.builder()
+                .building(building)
+                .gateCode(text(body, "gateCode"))
+                .gateName(text(body, "gateName"))
+                .gateType(Gate.GateType.valueOf(textOrDefault(body, "gateType", "MAIN_BOTH").toUpperCase()))
+                .isActive(true)
+                .build();
+
+        return gateRepository.save(gate);
+    }
+
+    @Transactional
+    public Gate updateGate(UUID id, Map<String, Object> body) {
+        Gate gate = gateRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Gate không tồn tại"));
+
+        if (body.containsKey("gateName")) gate.setGateName(text(body, "gateName"));
+        if (body.containsKey("gateType")) gate.setGateType(Gate.GateType.valueOf(text(body, "gateType").toUpperCase()));
+        if (body.containsKey("isActive")) gate.setIsActive(Boolean.parseBoolean(String.valueOf(body.get("isActive"))));
+
+        return gateRepository.save(gate);
+    }
+
+    @Transactional
+    public void deleteGate(UUID id) {
+        if (!gateRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Gate không tồn tại");
+        }
+        gateRepository.deleteById(id);
+    }
+
+
+    private String textOrDefault(Map<String, Object> body, String key, String defaultVal) {
+        return body.containsKey(key) ? body.get(key).toString() : defaultVal;
+    }
+
+    private BigDecimal decimal(Map<String, Object> body, String key, BigDecimal defaultVal) {
+        return body.containsKey(key) ? new BigDecimal(body.get(key).toString()) : defaultVal;
+    }
+
+    public void deleteZone(UUID id) {
+        zoneRepository.deleteById(id);
+    }
+
+    // helper methods — copy từ controller cũ sang
+    private UUID uuid(Map<String, Object> body, String key) {
+        return UUID.fromString(body.get(key).toString());
+    }
+
+    private String text(Map<String, Object> body, String key) {
+        return body.get(key).toString();
+    }
+
+    private int number(Map<String, Object> body, String key, int defaultVal) {
+        return body.containsKey(key) ? Integer.parseInt(body.get(key).toString()) : defaultVal;
+    }
+
+
+
 }

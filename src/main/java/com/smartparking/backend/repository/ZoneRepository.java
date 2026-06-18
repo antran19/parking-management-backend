@@ -29,4 +29,6 @@ public interface ZoneRepository extends JpaRepository<Zone, UUID> {
            "WHERE b.id = :buildingId " +
            "ORDER BY f.floorNumber ASC, z.zoneCode ASC")
     List<Zone> findAllByBuildingId(@Param("buildingId") UUID buildingId);
+    // ZoneRepository.java — thêm vào
+    List<Zone> findAllByFloorId(UUID floorId);
 }

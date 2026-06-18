@@ -21,11 +21,14 @@ import com.smartparking.backend.dto.response.ApiResponse;
 
 /**
  * ParkingConfigController — API cấu hình bãi xe (Toàn phụ trách)
- *
  * TODO (Toàn): Implement các endpoint sau:
  * - GET /parking/config    → Trả về danh sách vehicleTypes, gates, zones (cho FE load form)
  * - PUT /parking/zones/{id}/status → Cập nhật trạng thái zone (ACTIVE/MAINTENANCE/CLOSED)
+ * - Dùng List để lưu các Object trong API, Dùng LinkedHashMap để chuẩn hóa dữ liệu theo kiểu JSON
  */
+
+
+
 @RestController
 @RequestMapping("/api/v1/parking")
 public class ParkingConfigController {
@@ -47,7 +50,7 @@ public class ParkingConfigController {
     // TODO : PUT /parking/zones/{id}/status → Cập nhật trạng thái zone (ACTIVE/MAINTENANCE/CLOSED)
     @PutMapping("/zones/{id}/status")
     @Transactional
-    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyAuthority('STAFF','MANAGER','ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateZoneStatus(@PathVariable UUID id, @RequestBody Map<String, String> body) {
         String status = String.valueOf(body.getOrDefault("status", "ACTIVE")).toUpperCase();
         Zone zone = zoneRepository.findById(id).orElseThrow(() -> new RuntimeException("Zone not found"));

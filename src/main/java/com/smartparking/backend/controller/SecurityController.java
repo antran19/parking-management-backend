@@ -1,7 +1,6 @@
 package com.smartparking.backend.controller;
 
 import com.smartparking.backend.dto.request.BlacklistPlateRequest;
-import com.smartparking.backend.dto.request.BlacklistRemoveRequest;
 import com.smartparking.backend.dto.request.EmergencyActivateRequest;
 import com.smartparking.backend.dto.request.EmergencyDeactivateRequest;
 import com.smartparking.backend.dto.request.SecurityExceptionRequest;

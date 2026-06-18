@@ -73,6 +73,13 @@ management:
     health:
       show-details: always
 
+# ===== SWAGGER =====
+springdoc:
+  swagger-ui:
+    operations-sorter: alpha       # Sắp xếp API theo tên (A-Z)
+    tags-sorter: alpha             # Sắp xếp nhóm tag theo tên
+    doc-expansion: list            # Mặc định thu gọn, chỉ hiện danh sách
+
 # ===== LOGGING =====
 logging:
   level:

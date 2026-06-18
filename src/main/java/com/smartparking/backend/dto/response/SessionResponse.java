@@ -39,9 +39,16 @@ public class SessionResponse {
     // Trạng thái session
     private ParkingSession.SessionStatus status;
 
+    private ParkingSession.DriverType driverType;
+
     // Trạng thái thanh toán (dùng khi check-out)
     private String paymentStatus;
 
     // Message hướng dẫn cho tài xế (hiển thị tại cổng vào)
     private String guideMessage; // "Vui lòng đến Tầng B2 - Khu A - Xe máy"
+
+    private String entryPlateImageUrl;
+    private String entryFaceImageUrl;
+    private String exitPlateImageUrl;
+    private String exitFaceImageUrl;
 }

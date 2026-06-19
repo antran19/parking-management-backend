@@ -22,12 +22,14 @@ public class ManagerService {
     private final ParkingSessionRepository parkingSessionRepository;
     private final ZoneRepository zoneRepository;
     private final ExceptionLogRepository exceptionLogRepository;
-    private final BuildingRepository buildingRepository;  // thêm
-    private final FloorRepository floorRepository;        // thêm
+    private final BuildingRepository buildingRepository;
+    private final FloorRepository floorRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
     private final PricingRuleRepository pricingRuleRepository;
     private final GateRepository gateRepository;
-    // Cập nhật Constructor để Spring tự động tiêm (inject) các Repository vào
+    private final ParkingSessionService parkingSessionService;
+
+    // Constructor
     public ManagerService(PaymentRepository paymentRepository,
                           ParkingSessionRepository parkingSessionRepository,
                           ZoneRepository zoneRepository,
@@ -36,7 +38,8 @@ public class ManagerService {
                           FloorRepository floorRepository,
                           VehicleTypeRepository vehicleTypeRepository,
                           PricingRuleRepository pricingRuleRepository,
-                          GateRepository gateRepository) {
+                          GateRepository gateRepository,
+                          ParkingSessionService parkingSessionService) {
         this.paymentRepository = paymentRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
@@ -46,6 +49,7 @@ public class ManagerService {
         this.vehicleTypeRepository = vehicleTypeRepository;
         this.pricingRuleRepository = pricingRuleRepository;
         this.gateRepository = gateRepository;
+        this.parkingSessionService = parkingSessionService;
     }
     /*
     ===========================================================================================================
@@ -158,8 +162,7 @@ public class ManagerService {
                                                       CÔNG SUẤT
     ==============================================================================================================
     */
-    // ManagerServiceImpl.java
-    public BuildingOccupancyResponse  getBuildingOccupancy(UUID id) {
+    public BuildingOccupancyResponse getBuildingOccupancy(UUID id) {
 
         Building building = buildingRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Building not found: " + id));
@@ -192,7 +195,7 @@ public class ManagerService {
                 .reportDate(LocalDate.now())
                 .build();
     }
-    public FloorOccupancyResponse  getFloorOccupancy(UUID id) {
+    public FloorOccupancyResponse getFloorOccupancy(UUID id) {
 
         Floor floor = floorRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Floor not found: " + id));
@@ -414,6 +417,16 @@ public class ManagerService {
         gateRepository.deleteById(id);
     }
 
+    /*
+    =============================================================================================================
+                                             DASHBOARD STATS (from staff-history)
+    =============================================================================================================
+    */
+    public Map<String, Object> getDashboardStats() {
+        return parkingSessionService.getDashboardStats();
+    }
+
+    // ===================== HELPER METHODS =====================
 
     private String textOrDefault(Map<String, Object> body, String key, String defaultVal) {
         return body.containsKey(key) ? body.get(key).toString() : defaultVal;
@@ -427,7 +440,7 @@ public class ManagerService {
         zoneRepository.deleteById(id);
     }
 
-    // helper methods — copy từ controller cũ sang
+    // helper methods
     private UUID uuid(Map<String, Object> body, String key) {
         return UUID.fromString(body.get(key).toString());
     }
@@ -439,7 +452,4 @@ public class ManagerService {
     private int number(Map<String, Object> body, String key, int defaultVal) {
         return body.containsKey(key) ? Integer.parseInt(body.get(key).toString()) : defaultVal;
     }
-
-
-
 }

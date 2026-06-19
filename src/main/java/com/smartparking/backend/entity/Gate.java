@@ -20,6 +20,10 @@ public class Gate {
     @JoinColumn(name = "building_id", nullable = false)
     private Building building;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "zone_id")
+    private Zone zone; // Zone tương ứng của cổng (cho cổng Zone phụ)
+
     @Column(name = "gate_code", nullable = false, length = 20)
     private String gateCode; // GATE-A, GATE-B
 

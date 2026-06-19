@@ -77,6 +77,7 @@ public class SecurityController {
      * POST /api/v1/security/exceptions
      */
     @PostMapping("/exceptions")
+    @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<ExceptionLogResponse>> logException(
             @Valid @RequestBody SecurityExceptionRequest request) {
         ExceptionLogResponse exceptionLog = securityExceptionService.logException(request);
@@ -91,6 +92,7 @@ public class SecurityController {
      * 
      */
     @GetMapping("/exceptions")
+    @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<ExceptionLogResponse>>> getAllExceptions() {
         List<ExceptionLogResponse> list = securityExceptionService.getAllExceptions();
         return ResponseEntity.ok(ApiResponse.success(list));

@@ -208,8 +208,14 @@ public class AdminManagementController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> createGate(@RequestBody Map<String, Object> body) {
         Building building = buildingRepository.findById(uuid(body, "buildingId"))
                 .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
+        Zone zone = null;
+        if (body.containsKey("zoneId") && body.get("zoneId") != null && !String.valueOf(body.get("zoneId")).isBlank()) {
+            zone = zoneRepository.findById(uuid(body, "zoneId"))
+                    .orElseThrow(() -> new ResourceNotFoundException("Zone không tồn tại"));
+        }
         Gate gate = Gate.builder()
                 .building(building)
+                .zone(zone)
                 .gateCode(text(body, "gateCode"))
                 .gateName(text(body, "gateName"))
                 .gateType(Gate.GateType.valueOf(textOrDefault(body, "gateType", "MAIN_BOTH").toUpperCase()))
@@ -228,6 +234,15 @@ public class AdminManagementController {
         if (body.containsKey("gateName")) gate.setGateName(text(body, "gateName"));
         if (body.containsKey("gateType")) gate.setGateType(Gate.GateType.valueOf(text(body, "gateType").toUpperCase()));
         if (body.containsKey("isActive")) gate.setIsActive(Boolean.parseBoolean(String.valueOf(body.get("isActive"))));
+        if (body.containsKey("zoneId")) {
+            if (body.get("zoneId") == null || String.valueOf(body.get("zoneId")).isBlank()) {
+                gate.setZone(null);
+            } else {
+                Zone zone = zoneRepository.findById(uuid(body, "zoneId"))
+                        .orElseThrow(() -> new ResourceNotFoundException("Zone không tồn tại"));
+                gate.setZone(zone);
+            }
+        }
         return ResponseEntity.ok(ApiResponse.success("Đã cập nhật cổng", gateMap(gateRepository.save(gate))));
     }
 
@@ -489,6 +504,11 @@ public class AdminManagementController {
         map.put("isActive", gate.getIsActive());
         map.put("buildingId", gate.getBuilding().getId());
         map.put("buildingName", gate.getBuilding().getName());
+        if (gate.getZone() != null) {
+            map.put("zoneId", gate.getZone().getId());
+            map.put("zoneCode", gate.getZone().getZoneCode());
+            map.put("zoneName", gate.getZone().getZoneName());
+        }
         return map;
     }
 

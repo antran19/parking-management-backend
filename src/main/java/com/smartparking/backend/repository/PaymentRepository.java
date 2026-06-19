@@ -24,9 +24,12 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("to") LocalDateTime to
     );
 
-    // Lấy danh sách payment trong khoảng thời gian (dùng để nhóm theo ngày/tháng/năm ở Service)
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = com.smartparking.backend.entity.Payment.PaymentStatus.COMPLETED AND p.paidAt >= :start AND p.paidAt < :end")
+    BigDecimal sumCompletedPaymentsBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    // Lấy danh sách payment trong khoảng thời gian
     List<Payment> findByPaidAtBetween(LocalDateTime from, LocalDateTime to);
 
-    // Phân trang danh sách payment để xem chi tiết giao dịch
+    // Phân trang danh sách payment
     Page<Payment> findAll(Pageable pageable);
 }

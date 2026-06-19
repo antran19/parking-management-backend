@@ -22,6 +22,7 @@ public class ManagerService {
     private final ExceptionLogRepository exceptionLogRepository;
     private final BuildingRepository buildingRepository;  // thêm
     private final FloorRepository floorRepository;        // thêm
+    private final ParkingSessionService parkingSessionService;
 
     // Cập nhật Constructor để Spring tự động tiêm (inject) các Repository vào
     public ManagerService(PaymentRepository paymentRepository,
@@ -29,13 +30,15 @@ public class ManagerService {
                           ZoneRepository zoneRepository,
                           ExceptionLogRepository exceptionLogRepository,
                           BuildingRepository buildingRepository,
-                          FloorRepository floorRepository) {
+                          FloorRepository floorRepository,
+                          ParkingSessionService parkingSessionService) {
         this.paymentRepository = paymentRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
         this.exceptionLogRepository = exceptionLogRepository;
         this.buildingRepository = buildingRepository;
         this.floorRepository = floorRepository;
+        this.parkingSessionService = parkingSessionService;
     }
 
 
@@ -182,8 +185,6 @@ public class ManagerService {
                 ? Math.round((totalOccupied * 100.0 / totalCapacity) * 10.0) / 10.0
                 : 0.0;
 
-        List<Floor> floors = floorRepository.findByBuildingId(id);
-
         return OccupancyEntry.builder()
                 .id(id.toString())
                 .name(building.getName())
@@ -290,5 +291,9 @@ public class ManagerService {
                 .forEach(type -> byType.put(type.name(), byType.get(type.name()) + 1));
 
         return byType;
+    }
+
+    public Map<String, Object> getDashboardStats() {
+        return parkingSessionService.getDashboardStats();
     }
 }

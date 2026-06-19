@@ -7,6 +7,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,5 +22,18 @@ public interface ParkingSessionRepository extends JpaRepository<ParkingSession, 
     Page<ParkingSession> findByStatus(SessionStatus status, Pageable pageable);
     List<ParkingSession> findByLicensePlateOrderByEntryTimeDesc(String licensePlate);
 
-    long countByEntryTimeBetween(java.time.LocalDateTime from, java.time.LocalDateTime to);
+    long countByEntryTimeBetween(LocalDateTime start, LocalDateTime end);
+
+    @Query("SELECT COUNT(s) FROM ParkingSession s WHERE s.status = com.smartparking.backend.entity.ParkingSession.SessionStatus.ACTIVE")
+    long countActiveSessions();
+
+    @Query("SELECT COUNT(s) FROM ParkingSession s WHERE s.exitTime >= :start AND s.exitTime < :end AND s.status = com.smartparking.backend.entity.ParkingSession.SessionStatus.COMPLETED")
+    long countSessionsCompletedBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT s FROM ParkingSession s " +
+           "WHERE (CAST(:licensePlate AS string) IS NULL OR UPPER(s.licensePlate) LIKE :licensePlate) " +
+           "AND (:status IS NULL OR s.status = :status)")
+    Page<ParkingSession> searchSessions(@Param("licensePlate") String licensePlate,
+                                        @Param("status") SessionStatus status,
+                                        Pageable pageable);
 }

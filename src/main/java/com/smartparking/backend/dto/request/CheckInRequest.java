@@ -15,7 +15,7 @@ import java.util.UUID;
 public class CheckInRequest {
 
     @NotBlank(message = "Biển số xe không được để trống")
-    @Pattern(regexp = "^\\s*\\d{2}[A-Za-z]{1,2}\\d?-\\d{3}(\\.\\d{2}|\\d{2})\\s*$", message = "Biển số không đúng định dạng. Ví dụ: 51F-123.45, 30A-12345 hoặc 59X1-12345")
+    @Pattern(regexp = "^\\s*\\d{2}[A-Za-z]{1,2}\\d?[- ]?\\d{3,5}(\\.\\d{2})?\\s*$", message = "Biển số không đúng định dạng. Ví dụ: 51F-123.45, 30A-12345 hoặc 59X1-12345")
     private String licensePlate; // "51A-12345"
 
     @NotNull(message = "Loại phương tiện không được để trống")

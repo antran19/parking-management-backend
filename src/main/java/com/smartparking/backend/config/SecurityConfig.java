@@ -95,6 +95,7 @@ public class SecurityConfig {
 
                 // ── Security: Bảo vệ + Quản lý + Admin ──
                 // Log ngoại lệ an ninh, giám sát cổng
+                .requestMatchers("/api/v1/security/exceptions", "/api/v1/security/exceptions/**").hasAnyRole("SECURITY", "STAFF", "MANAGER", "ADMIN")
                 .requestMatchers("/api/v1/security/**").hasAnyRole("SECURITY", "MANAGER", "ADMIN")
 
                 // ── Manager: Quản lý vận hành + Admin ──

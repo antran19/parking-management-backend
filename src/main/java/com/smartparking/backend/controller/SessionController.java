@@ -2,6 +2,7 @@ package com.smartparking.backend.controller;
 
 import com.smartparking.backend.dto.request.CheckInRequest;
 import com.smartparking.backend.dto.request.CheckOutRequest;
+import com.smartparking.backend.dto.request.CheckInZoneRequest;
 import com.smartparking.backend.dto.response.ApiResponse;
 import com.smartparking.backend.dto.response.SessionResponse;
 import com.smartparking.backend.service.ParkingSessionService;
@@ -10,6 +11,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.data.domain.Page;
 
 import java.util.Map;
 
@@ -34,6 +36,15 @@ public class SessionController {
     }
 
     /**
+     * Lấy dữ liệu thống kê tổng quan cho Staff Dashboard.
+     */
+    @GetMapping("/staff/dashboard")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getStaffDashboard() {
+        return ResponseEntity.ok(ApiResponse.success(parkingSessionService.getDashboardStats()));
+    }
+
+    /**
      * Check-in xe vào bãi — chỉ STAFF trở lên.
      */
     @PostMapping("/staff/sessions/checkin")
@@ -43,6 +54,18 @@ public class SessionController {
         SessionResponse response = parkingSessionService.checkIn(request);
         return ResponseEntity.ok(ApiResponse.success(
                 "Check-in thành công. " + response.getGuideMessage(), response));
+    }
+
+    /**
+     * Check-in xe vào Zone (Check-in lần 2) — chỉ STAFF trở lên.
+     */
+    @PostMapping("/staff/sessions/zone-entry")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<SessionResponse>> checkInZone(
+            @Valid @RequestBody CheckInZoneRequest request) {
+        SessionResponse response = parkingSessionService.checkInZone(request);
+        return ResponseEntity.ok(ApiResponse.success(
+                response.getGuideMessage(), response));
     }
 
     /**
@@ -58,14 +81,40 @@ public class SessionController {
     }
 
     /**
-     * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem.
+     * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân trang và tìm kiếm).
      */
     @GetMapping("/staff/sessions/history")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
-    public ResponseEntity<ApiResponse<java.util.List<SessionResponse>>> getAllSessions() {
-        java.util.List<SessionResponse> history = parkingSessionService.getAllSessions();
+    public ResponseEntity<ApiResponse<?>> getSessionsHistory(
+            @RequestParam(value = "page", required = false) Integer page,
+            @RequestParam(value = "size", required = false) Integer size,
+            @RequestParam(value = "licensePlate", required = false) String licensePlate,
+            @RequestParam(value = "status", required = false) String status) {
+        
+        com.smartparking.backend.entity.ParkingSession.SessionStatus sessionStatus = null;
+        if (status != null && !status.trim().isEmpty() && !"all".equalsIgnoreCase(status)) {
+            try {
+                if ("parked".equalsIgnoreCase(status)) {
+                    sessionStatus = com.smartparking.backend.entity.ParkingSession.SessionStatus.ACTIVE;
+                } else if ("checked_out".equalsIgnoreCase(status)) {
+                    sessionStatus = com.smartparking.backend.entity.ParkingSession.SessionStatus.COMPLETED;
+                } else {
+                    sessionStatus = com.smartparking.backend.entity.ParkingSession.SessionStatus.valueOf(status.toUpperCase());
+                }
+            } catch (IllegalArgumentException e) {
+                // Ignore invalid status enum string
+            }
+        }
+        
+        if (page == null || size == null) {
+            java.util.List<SessionResponse> history = parkingSessionService.getAllSessions();
+            return ResponseEntity.ok(ApiResponse.success(history));
+        }
+        
+        Page<SessionResponse> history = parkingSessionService.searchSessions(licensePlate, sessionStatus, page, size);
         return ResponseEntity.ok(ApiResponse.success(history));
     }
+
 
     /**
      * Driver khởi tạo thanh toán VNPay sandbox để check-out phiên gửi xe đang hoạt động.

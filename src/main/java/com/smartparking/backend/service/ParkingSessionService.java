@@ -9,6 +9,7 @@ import com.smartparking.backend.entity.ParkingSession.SessionStatus;
 import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.repository.*;
+import com.smartparking.backend.util.LicensePlateUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -104,7 +105,6 @@ public class ParkingSessionService {
      * Xử lý xe vào bãi (Check-in):
      * 1. Kiểm tra trạng thái khẩn cấp (SOS) - Nếu có thì chặn.
      * 2. Kiểm tra biển số xem có đang đỗ trong bãi không (tránh trùng lặp phiên
-     * gửi).
      * 3. Kiểm tra biển số trong danh sách đen (Blacklist) - Nếu có thì phát cảnh
      * báo WebSocket và chặn xe.
      * 4. Kiểm tra mã đặt chỗ trước (Reservation):
@@ -120,12 +120,17 @@ public class ParkingSessionService {
         // Chặn nghiệp vụ nếu bãi đỗ đang trong tình trạng khẩn cấp
         emergencyService.ensureNormalOperation();
 
+        String normalizedPlate = LicensePlateUtil.normalize(request.getLicensePlate());
+
         // Bước 1: Validate — biển số không được có session đang hoạt động
-        sessionRepository.findByLicensePlateAndStatus(request.getLicensePlate(), SessionStatus.ACTIVE)
+        sessionRepository.findAll().stream()
+                .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
+                .filter(s -> LicensePlateUtil.normalize(s.getLicensePlate()).equals(normalizedPlate))
+                .findFirst()
                 .ifPresent(s -> {
                     throw new BusinessException(
                             "Biển số " + request.getLicensePlate() + " đang có phiên gửi xe chưa kết thúc (Mã: " +
-                                    s.getSessionCode() + "). Vui lòng check-out trước.");
+                                     s.getSessionCode() + "). Vui lòng check-out trước.");
                 });
 
         // Bước 2: Tìm các thông tin liên quan
@@ -135,7 +140,7 @@ public class ParkingSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng vào không tồn tại"));
 
         // Bước 3: Kiểm tra Blacklist
-        blacklistService.findActiveByPlate(request.getLicensePlate()).ifPresent(blacklistPlate -> {
+        blacklistService.findActiveByPlate(normalizedPlate).ifPresent(blacklistPlate -> {
             blacklistService.alertBlacklistAttempt(request.getLicensePlate(), blacklistPlate, mainGate);
             throw new BusinessException("Biển số " + request.getLicensePlate()
                     + " đang nằm trong blacklist. Lý do: " + blacklistPlate.getReason());
@@ -143,13 +148,15 @@ public class ParkingSessionService {
 
         // Tự động kiểm tra Vé tháng (ParkingPass) hoạt động tại Tòa nhà này
         boolean hasValidPass = false;
+        ParkingPass validPass = null;
         List<ParkingPass> activePasses = parkingPassRepository.findByLicensePlateAndBuildingAndStatus(
-                request.getLicensePlate(), mainGate.getBuilding(), ParkingPass.PassStatus.ACTIVE
+                normalizedPlate, mainGate.getBuilding(), ParkingPass.PassStatus.ACTIVE
         );
         java.time.LocalDate today = java.time.LocalDate.now();
         for (ParkingPass pass : activePasses) {
             if (!today.isBefore(pass.getStartDate()) && !today.isAfter(pass.getEndDate())) {
                 hasValidPass = true;
+                validPass = pass;
                 break;
             }
         }
@@ -166,16 +173,15 @@ public class ParkingSessionService {
                     && reservation.getStatus() != Reservation.ReservationStatus.PENDING) {
                 throw new BusinessException("Reservation không còn hiệu lực");
             }
-            String reservedPlate = reservation.getLicensePlate().replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-            String requestPlate = request.getLicensePlate().replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-            if (!reservedPlate.equals(requestPlate)) {
+            String reservedPlate = LicensePlateUtil.normalize(reservation.getLicensePlate());
+            if (!reservedPlate.equals(normalizedPlate)) {
                 throw new BusinessException("Biển số không khớp với reservation");
             }
         } else {
             // Tự động khớp reservation theo biển số xe
             LocalDateTime now = LocalDateTime.now();
             List<Reservation> activeReservations = reservationRepository.findByLicensePlateAndStatusIn(
-                request.getLicensePlate(),
+                normalizedPlate,
                 List.of(Reservation.ReservationStatus.CONFIRMED, Reservation.ReservationStatus.PENDING)
             );
             for (Reservation res : activeReservations) {
@@ -189,6 +195,13 @@ public class ParkingSessionService {
                     }
                 }
             }
+        }
+
+        // Tự động sửa lại đúng loại xe nếu khách có Vé tháng hoặc Đặt trước
+        if (validPass != null) {
+            vehicleType = validPass.getVehicleType();
+        } else if (reservation != null) {
+            vehicleType = reservation.getVehicleType();
         }
 
         if (reservation != null) {
@@ -236,7 +249,6 @@ public class ParkingSessionService {
             reservation.setStatus(Reservation.ReservationStatus.COMPLETED);
             reservationRepository.save(reservation);
         }
-
         log.info("CHECK-IN STAGE 1: plate={}, session={}, suggestedZone={}, floor={}",
                 request.getLicensePlate(), sessionCode,
                 assignedZone.getZoneCode(), assignedZone.getFloor().getFloorName());
@@ -409,6 +421,14 @@ public class ParkingSessionService {
 
         // Bước 1: Tìm parking session đang ACTIVE
         ParkingSession session = findActiveSession(request);
+        String sessionLicensePlate = session.getLicensePlate();
+
+        // Kiểm tra Blacklist
+        blacklistService.findActiveByPlate(LicensePlateUtil.normalize(sessionLicensePlate))
+                .ifPresent(blacklistPlate -> {
+                    throw new BusinessException("CẢNH BÁO: Xe mang biển số " + sessionLicensePlate + 
+                            " đang nằm trong danh sách đen! Không thể xuất bãi. Lý do: " + blacklistPlate.getReason());
+                });
 
         Gate exitGate = gateRepository.findById(request.getGateExitId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng ra không tồn tại"));
@@ -452,7 +472,18 @@ public class ParkingSessionService {
         // Bước 6: Giải phóng zone
         Zone zone = session.getZone();
         if (zone != null) {
-            zone = zoneSuggestionService.exitZone(zone);
+            if (session.getZoneEntryTime() != null) {
+                // Đã check-in vào zone thì mới giảm số lượng xe hiện tại
+                zone = zoneSuggestionService.exitZone(zone);
+            } else {
+                // Chưa vào zone mà đã check-out, nếu là đặt trước thì cần trả lại chỗ đã giữ
+                if (session.getDriverType() == ParkingSession.DriverType.PRE_BOOKED) {
+                    if (zone.getReservedCount() != null && zone.getReservedCount() > 0) {
+                        zone.setReservedCount(zone.getReservedCount() - 1);
+                        zone = zoneRepository.save(zone);
+                    }
+                }
+            }
             broadcastZoneChange(zone);
         }
 
@@ -485,6 +516,16 @@ public class ParkingSessionService {
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Không tìm thấy phiên gửi xe đang hoạt động cho biển số: " + licensePlate));
+
+        // Kiểm tra trạng thái khẩn cấp SOS
+        emergencyService.ensureNormalOperation();
+
+        // Kiểm tra Blacklist
+        blacklistService.findActiveByPlate(LicensePlateUtil.normalize(session.getLicensePlate()))
+                .ifPresent(blacklistPlate -> {
+                    throw new BusinessException("CẢNH BÁO: Xe mang biển số " + session.getLicensePlate() + 
+                            " đang nằm trong danh sách đen! Vui lòng liên hệ an ninh. Lý do: " + blacklistPlate.getReason());
+                });
 
         // Tính phí tạm tính dựa vào khoảng thời gian từ lúc vào tới thời điểm hiện tại
         int currentMinutes = (int) ChronoUnit.MINUTES.between(session.getEntryTime(), LocalDateTime.now());
@@ -595,7 +636,18 @@ public class ParkingSessionService {
 
         Zone zone = session.getZone();
         if (zone != null) {
-            zone = zoneSuggestionService.exitZone(zone);
+            if (session.getZoneEntryTime() != null) {
+                // Đã check-in vào zone thì mới giảm số lượng xe hiện tại
+                zone = zoneSuggestionService.exitZone(zone);
+            } else {
+                // Chưa vào zone mà đã check-out, nếu là đặt trước thì cần trả lại chỗ đã giữ
+                if (session.getDriverType() == ParkingSession.DriverType.PRE_BOOKED) {
+                    if (zone.getReservedCount() != null && zone.getReservedCount() > 0) {
+                        zone.setReservedCount(zone.getReservedCount() - 1);
+                        zone = zoneRepository.save(zone);
+                    }
+                }
+            }
             broadcastZoneChange(zone);
         }
 
@@ -749,8 +801,9 @@ public class ParkingSessionService {
 
         // 2. Nếu chưa tìm thấy khách hàng, kiểm tra đặt trước (Reservation)
         if (customerName == null) {
+            String normalizedSessionPlate = LicensePlateUtil.normalize(session.getLicensePlate());
             List<Reservation> reservations = reservationRepository.findByLicensePlateAndStatusIn(
-                    session.getLicensePlate(),
+                    normalizedSessionPlate,
                     List.of(Reservation.ReservationStatus.COMPLETED, Reservation.ReservationStatus.CONFIRMED, Reservation.ReservationStatus.PENDING)
             );
             if (!reservations.isEmpty() && reservations.get(0).getUser() != null) {
@@ -760,7 +813,8 @@ public class ParkingSessionService {
 
         // 3. Nếu vẫn chưa tìm thấy khách hàng, kiểm tra xem biển số xe đã được đăng ký bởi tài xế nào chưa
         if (customerName == null) {
-            List<UserLicensePlate> plateUsers = userLicensePlateRepository.findByLicensePlate(session.getLicensePlate());
+            String normalizedSessionPlate = LicensePlateUtil.normalize(session.getLicensePlate());
+            List<UserLicensePlate> plateUsers = userLicensePlateRepository.findByLicensePlate(normalizedSessionPlate);
             if (!plateUsers.isEmpty() && plateUsers.get(0).getUser() != null) {
                 customerName = plateUsers.get(0).getUser().getFullName();
             }

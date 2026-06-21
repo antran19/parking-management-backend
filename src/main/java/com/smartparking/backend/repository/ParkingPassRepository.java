@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -14,4 +15,5 @@ public interface ParkingPassRepository extends JpaRepository<ParkingPass, UUID> 
     List<ParkingPass> findByUser(User user);
     List<ParkingPass> findByUserAndStatus(User user, ParkingPass.PassStatus status);
     List<ParkingPass> findByLicensePlateAndBuildingAndStatus(String licensePlate, Building building, ParkingPass.PassStatus status);
+    Optional<ParkingPass> findByQrCode(String qrCode);
 }

@@ -22,21 +22,22 @@ public class ManagerService {
     private final ParkingSessionRepository parkingSessionRepository;
     private final ZoneRepository zoneRepository;
     private final ExceptionLogRepository exceptionLogRepository;
-    private final BuildingRepository buildingRepository;  // thêm
-    private final FloorRepository floorRepository;        // thêm
+    private final BuildingRepository buildingRepository; // thêm
+    private final FloorRepository floorRepository; // thêm
     private final VehicleTypeRepository vehicleTypeRepository;
     private final PricingRuleRepository pricingRuleRepository;
     private final GateRepository gateRepository;
+
     // Cập nhật Constructor để Spring tự động tiêm (inject) các Repository vào
     public ManagerService(PaymentRepository paymentRepository,
-                          ParkingSessionRepository parkingSessionRepository,
-                          ZoneRepository zoneRepository,
-                          ExceptionLogRepository exceptionLogRepository,
-                          BuildingRepository buildingRepository,
-                          FloorRepository floorRepository,
-                          VehicleTypeRepository vehicleTypeRepository,
-                          PricingRuleRepository pricingRuleRepository,
-                          GateRepository gateRepository) {
+            ParkingSessionRepository parkingSessionRepository,
+            ZoneRepository zoneRepository,
+            ExceptionLogRepository exceptionLogRepository,
+            BuildingRepository buildingRepository,
+            FloorRepository floorRepository,
+            VehicleTypeRepository vehicleTypeRepository,
+            PricingRuleRepository pricingRuleRepository,
+            GateRepository gateRepository) {
         this.paymentRepository = paymentRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
@@ -47,11 +48,65 @@ public class ManagerService {
         this.pricingRuleRepository = pricingRuleRepository;
         this.gateRepository = gateRepository;
     }
+
     /*
-    ===========================================================================================================
-                                            DOANH THU
-    ===========================================================================================================
-    */
+     * =============================================================================
+     * ==============================
+     * DASHBOARD TỔNG QUAN
+     * =============================================================================
+     * ==============================
+     */
+    public ManagerDashboardResponse getDashboard() {
+        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+        LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
+
+        // 1. todayRevenue
+        BigDecimal todayRevenue = paymentRepository.sumAmountByStatusAndPaidAtBetween(
+                Payment.PaymentStatus.COMPLETED, startOfDay, endOfDay);
+        if (todayRevenue == null)
+            todayRevenue = BigDecimal.ZERO;
+
+        // 2. activeSessions
+        long activeSessions = parkingSessionRepository.countByStatus(ParkingSession.SessionStatus.ACTIVE);
+
+        // 3. occupancyPercent
+        List<Zone> zones = zoneRepository.findAll();
+        int totalCapacity = zones.stream().mapToInt(Zone::getCapacity).sum();
+        int totalOccupied = zones.stream().mapToInt(z -> z.getCurrentCount() + z.getReservedCount()).sum();
+        double occupancyPercent = totalCapacity > 0
+                ? Math.round((totalOccupied * 100.0 / totalCapacity) * 10.0) / 10.0
+                : 0.0;
+
+        // 4. completedSessionsToday
+        List<ParkingSession> todaySessions = parkingSessionRepository.findByEntryTimeBetween(startOfDay, endOfDay);
+        long completedSessionsToday = todaySessions.stream()
+                .filter(s -> s.getStatus() == ParkingSession.SessionStatus.COMPLETED)
+                .count();
+
+        // 5. securityIncidentsToday
+        List<ExceptionLog> todayLogs = exceptionLogRepository.findByCreatedAtBetween(startOfDay, endOfDay);
+        long securityIncidentsToday = todayLogs.size();
+
+        // 6. activeEmergency
+        boolean activeEmergency = exceptionLogRepository.countByResolvedAtIsNull() > 0;
+
+        return ManagerDashboardResponse.builder()
+                .todayRevenue(todayRevenue)
+                .activeSessions(activeSessions)
+                .occupancyPercent(occupancyPercent)
+                .completedSessionsToday(completedSessionsToday)
+                .securityIncidentsToday(securityIncidentsToday)
+                .activeEmergency(activeEmergency)
+                .build();
+    }
+
+    /*
+     * =============================================================================
+     * ==============================
+     * DOANH THU
+     * =============================================================================
+     * ==============================
+     */
     /**
      * Lấy tổng doanh thu trong khoảng từ..đến (nếu null -> hôm nay)
      */
@@ -92,18 +147,14 @@ public class ManagerService {
             end = to.atTime(LocalTime.MAX);
         }
 
-        BigDecimal revenue =
-                paymentRepository.sumAmountByStatusAndPaidAtBetween(
-                        Payment.PaymentStatus.COMPLETED,
-                        start,
-                        end
-                );
+        BigDecimal revenue = paymentRepository.sumAmountByStatusAndPaidAtBetween(
+                Payment.PaymentStatus.COMPLETED,
+                start,
+                end);
 
-        long totalSessions =
-                parkingSessionRepository.countByEntryTimeBetween(
-                        start,
-                        end
-                );
+        long totalSessions = parkingSessionRepository.countByEntryTimeBetween(
+                start,
+                end);
 
         return RevenueResponse.builder()
                 .from(start)
@@ -113,11 +164,14 @@ public class ManagerService {
                 .currency("VND")
                 .build();
     }
+
     /*
-    ========================================================================================================
-                                             LƯỢT GỬI XE
-    ========================================================================================================
-    */
+     * =============================================================================
+     * ===========================
+     * LƯỢT GỬI XE
+     * =============================================================================
+     * ===========================
+     */
     public RevenueResponse getVisits(String type, LocalDate from, LocalDate to) {
 
         LocalDateTime start;
@@ -154,12 +208,14 @@ public class ManagerService {
     }
 
     /*
-    ==============================================================================================================
-                                                      CÔNG SUẤT
-    ==============================================================================================================
-    */
+     * =============================================================================
+     * =================================
+     * CÔNG SUẤT
+     * =============================================================================
+     * =================================
+     */
     // ManagerServiceImpl.java
-    public BuildingOccupancyResponse  getBuildingOccupancy(UUID id) {
+    public BuildingOccupancyResponse getBuildingOccupancy(UUID id) {
 
         Building building = buildingRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Building not found: " + id));
@@ -192,7 +248,8 @@ public class ManagerService {
                 .reportDate(LocalDate.now())
                 .build();
     }
-    public FloorOccupancyResponse  getFloorOccupancy(UUID id) {
+
+    public FloorOccupancyResponse getFloorOccupancy(UUID id) {
 
         Floor floor = floorRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Floor not found: " + id));
@@ -223,11 +280,14 @@ public class ManagerService {
                 .reportDate(LocalDate.now())
                 .build();
     }
+
     /*
-    =============================================================================================================
-                                                      THANH TOÁN
-    =============================================================================================================
-    */
+     * =============================================================================
+     * ================================
+     * THANH TOÁN
+     * =============================================================================
+     * ================================
+     */
     /**
      * Lấy chi tiết một giao dịch payment theo id
      */
@@ -246,6 +306,7 @@ public class ManagerService {
                         .build())
                 .orElse(null);
     }
+
     public List<PaymentDetailResponse> getPayments() {
         return paymentRepository.findAll().stream()
                 .map(p -> PaymentDetailResponse.builder()
@@ -261,25 +322,31 @@ public class ManagerService {
                         .build())
                 .collect(Collectors.toList());
     }
-     /*
-    =============================================================================================================
-                                                     SỰ CỐ AN NINH
-    =============================================================================================================
-    */
+
+    /*
+     * =============================================================================
+     * ================================
+     * SỰ CỐ AN NINH
+     * =============================================================================
+     * ================================
+     */
     /**
      * Tổng hợp sự cố: tổng, chưa giải quyết, phân loại theo type
      */
     public SecurityIncidentSummary getSecuritySummary(LocalDateTime from, LocalDateTime to) {
         List<ExceptionLog> logs;
-        if (from != null && to != null) logs = exceptionLogRepository.findByCreatedAtBetween(from, to);
-        else logs = exceptionLogRepository.findAll();
+        if (from != null && to != null)
+            logs = exceptionLogRepository.findByCreatedAtBetween(from, to);
+        else
+            logs = exceptionLogRepository.findAll();
 
         long total = logs.size();
         long unresolved = logs.stream()
                 .filter(log -> log.getResolvedAt() == null)
                 .count();
         Map<String, Long> byType = classifySecurityIncidents(logs);
-        return SecurityIncidentSummary.builder().totalIncidents(total).unresolvedIncidents(unresolved).byType(byType).build();
+        return SecurityIncidentSummary.builder().totalIncidents(total).unresolvedIncidents(unresolved).byType(byType)
+                .build();
     }
 
     private Map<String, Long> classifySecurityIncidents(List<ExceptionLog> logs) {
@@ -296,11 +363,14 @@ public class ManagerService {
         return byType;
     }
     /*
-    =============================================================================================================
-                                                     CRUD ZONE
-    =============================================================================================================
-    */
+     * =============================================================================
+     * ================================
+     * CRUD ZONE
+     * =============================================================================
+     * ================================
+     */
 
+    @Transactional
     public Zone createZone(Map<String, Object> body) {
         Floor floor = floorRepository.findById(uuid(body, "floorId"))
                 .orElseThrow(() -> new ResourceNotFoundException("Floor không tồn tại"));
@@ -335,9 +405,14 @@ public class ManagerService {
 
         return zoneRepository.save(zone);
     }
-    /*=============================================================================================================
-                                             CRUD PricingRule
-    =============================================================================================================*/
+
+    /*
+     * =============================================================================
+     * ================================
+     * CRUD PricingRule
+     * =============================================================================
+     * ================================
+     */
     public PricingRule createPricingRule(Map<String, Object> body) {
         Building building = buildingRepository.findById(uuid(body, "buildingId"))
                 .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
@@ -375,9 +450,14 @@ public class ManagerService {
     public void deletePricingRule(UUID id) {
         pricingRuleRepository.deleteById(id);
     }
-    /*=============================================================================================================
-                                             CRUD GATE
-    =============================================================================================================*/
+
+    /*
+     * =============================================================================
+     * ================================
+     * CRUD GATE
+     * =============================================================================
+     * ================================
+     */
     @Transactional
     public Gate createGate(Map<String, Object> body) {
         Building building = buildingRepository.findById(uuid(body, "buildingId"))
@@ -399,9 +479,12 @@ public class ManagerService {
         Gate gate = gateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Gate không tồn tại"));
 
-        if (body.containsKey("gateName")) gate.setGateName(text(body, "gateName"));
-        if (body.containsKey("gateType")) gate.setGateType(Gate.GateType.valueOf(text(body, "gateType").toUpperCase()));
-        if (body.containsKey("isActive")) gate.setIsActive(Boolean.parseBoolean(String.valueOf(body.get("isActive"))));
+        if (body.containsKey("gateName"))
+            gate.setGateName(text(body, "gateName"));
+        if (body.containsKey("gateType"))
+            gate.setGateType(Gate.GateType.valueOf(text(body, "gateType").toUpperCase()));
+        if (body.containsKey("isActive"))
+            gate.setIsActive(Boolean.parseBoolean(String.valueOf(body.get("isActive"))));
 
         return gateRepository.save(gate);
     }
@@ -413,7 +496,6 @@ public class ManagerService {
         }
         gateRepository.deleteById(id);
     }
-
 
     private String textOrDefault(Map<String, Object> body, String key, String defaultVal) {
         return body.containsKey(key) ? body.get(key).toString() : defaultVal;
@@ -439,7 +521,5 @@ public class ManagerService {
     private int number(Map<String, Object> body, String key, int defaultVal) {
         return body.containsKey(key) ? Integer.parseInt(body.get(key).toString()) : defaultVal;
     }
-
-
 
 }

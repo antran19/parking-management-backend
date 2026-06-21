@@ -41,6 +41,7 @@ volumes:
   postgres_data:
   redis_data:
 
+
 # ─── HOW TO USE ─────────────────────────────────────────────────────────────
 # Start:   docker-compose up -d
 # Stop:    docker-compose down

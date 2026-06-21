@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
  * - GET /parking/config           → Trả về toàn bộ config (vehicleTypes, buildings, floors, gates, zones, pricingRules)
  * - PUT /parking/zones/{id}/status → Cập nhật trạng thái zone
  */
+
 @RestController
 @RequestMapping("/api/v1/parking")
 @Tag(name = "Parking Config", description = "APIs for parking lot configuration (shared by all roles)")

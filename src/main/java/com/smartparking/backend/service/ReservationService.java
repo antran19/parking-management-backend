@@ -2,10 +2,24 @@ package com.smartparking.backend.service;
 
 import com.smartparking.backend.dto.request.ReservationRequest;
 import com.smartparking.backend.dto.response.ReservationResponse;
-import com.smartparking.backend.entity.*;
-import com.smartparking.backend.repository.*;
+import com.smartparking.backend.entity.Reservation;
+import com.smartparking.backend.entity.User;
+import com.smartparking.backend.entity.VehicleType;
+import com.smartparking.backend.entity.Zone;
+import com.smartparking.backend.exception.BusinessException;
+import com.smartparking.backend.exception.ResourceNotFoundException;
+import com.smartparking.backend.repository.ReservationRepository;
+import com.smartparking.backend.repository.UserLicensePlateRepository;
+import com.smartparking.backend.repository.VehicleTypeRepository;
+import com.smartparking.backend.repository.ZoneRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.smartparking.backend.util.LicensePlateUtil;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * ReservationService — Đặt giữ chỗ zone (Quảng phụ trách)
@@ -21,10 +35,323 @@ import org.springframework.transaction.annotation.Transactional;
  * - Kiểm tra zone còn chỗ: currentCount + reservedCount < capacity
  * - Sinh mã reservation: "RS" + yyyyMMdd + "-" + random 4 ký tự
  */
+/**
+ * ReservationService — Đặt giữ chỗ zone (Quảng phụ trách)
+ *
+ * Nhiệm vụ:
+ * - Tạo reservation
+ * - Lấy danh sách reservation của driver
+ * - Hủy reservation
+ *
+ * Quy ước theo docs:
+ * - Không sửa Entity
+ * - Không sửa Repository
+ * - Không sửa DTO
+ * - Dùng constructor injection
+ * - Validate business logic trong Service
+ */
 @Service
 public class ReservationService {
 
-    // TODO: Inject repositories
-    // TODO: Constructor injection
-    // TODO: Implement methods
+    private final ReservationRepository reservationRepository;
+    private final ZoneRepository zoneRepository;
+    private final VehicleTypeRepository vehicleTypeRepository;
+    private final UserLicensePlateRepository userLicensePlateRepository;
+
+    public ReservationService(
+            ReservationRepository reservationRepository,
+            ZoneRepository zoneRepository,
+            VehicleTypeRepository vehicleTypeRepository,
+            UserLicensePlateRepository userLicensePlateRepository) {
+        this.reservationRepository = reservationRepository;
+        this.zoneRepository = zoneRepository;
+        this.vehicleTypeRepository = vehicleTypeRepository;
+        this.userLicensePlateRepository = userLicensePlateRepository;
+    }
+
+    /**
+     * Tạo đặt chỗ mới cho driver.
+     *
+     * Luồng xử lý:
+     * 1. Kiểm tra zone tồn tại
+     * 2. Kiểm tra loại xe tồn tại
+     * 3. Kiểm tra biển số thuộc driver
+     * 4. Kiểm tra loại xe khớp với zone
+     * 5. Kiểm tra zone còn chỗ
+     * 6. Kiểm tra biển số chưa có reservation PENDING/CONFIRMED
+     * 7. Tăng reservedCount của zone
+     * 8. Tạo reservationCode
+     * 9. Lưu reservation
+     */
+    @Transactional
+    public ReservationResponse createReservation(User user, ReservationRequest request) {
+        Zone zone = zoneRepository.findById(request.getZoneId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy zone"));
+
+        VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy loại xe"));
+
+        String licensePlate = normalizePlate(request.getLicensePlate());
+
+        validatePlateBelongsToUser(user, licensePlate);
+        validateZoneMatchesVehicleType(zone, vehicleType);
+        validateZoneHasAvailableSlot(zone);
+        validatePlateHasNoActiveReservation(user, licensePlate);
+
+        LocalDateTime reservedFrom = request.getReservedFrom() != null
+                ? request.getReservedFrom()
+                : LocalDateTime.now();
+
+        LocalDateTime reservedTo = request.getReservedTo() != null
+                ? request.getReservedTo()
+                : reservedFrom.plusMinutes(30);
+
+        if (!reservedTo.isAfter(reservedFrom)) {
+            throw new BusinessException("Thời gian kết thúc phải sau thời gian bắt đầu");
+        }
+
+        validateReservationWindow(reservedFrom, reservedTo);
+
+        /*
+         * NOTE Quảng - Driver reservation:
+         * Chống NullPointerException nếu dữ liệu zone cũ có reservedCount = null.
+         * Nếu zone vừa đầy sau khi giữ chỗ thì đổi trạng thái sang FULL.
+         */
+        int currentCount = zone.getCurrentCount() == null ? 0 : zone.getCurrentCount();
+        int capacity = zone.getCapacity() == null ? 0 : zone.getCapacity();
+        int newReservedCount = (zone.getReservedCount() == null ? 0 : zone.getReservedCount()) + 1;
+
+        zone.setReservedCount(newReservedCount);
+
+        if (capacity > 0 && currentCount + newReservedCount >= capacity) {
+            zone.setStatus(Zone.ZoneStatus.FULL);
+        }
+
+        zoneRepository.save(zone);
+
+        Reservation reservation = Reservation.builder()
+                .user(user)
+                .zone(zone)
+                .reservationCode(generateReservationCode())
+                .vehicleType(vehicleType)
+                .licensePlate(licensePlate)
+                .reservedFrom(reservedFrom)
+                .reservedTo(reservedTo)
+                .status(Reservation.ReservationStatus.PENDING)
+                .build();
+
+        Reservation savedReservation = reservationRepository.save(reservation);
+
+        return toResponse(savedReservation);
+    }
+
+    /**
+     * Lấy danh sách đặt chỗ của driver đang đăng nhập.
+     */
+    @Transactional(readOnly = true)
+    public List<ReservationResponse> getUserReservations(User user) {
+        return reservationRepository.findByUserOrderByCreatedAtDesc(user)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    /**
+     * Hủy đặt chỗ của driver.
+     *
+     * Nếu reservation đang PENDING hoặc CONFIRMED:
+     * - Chuyển status thành CANCELLED
+     * - Giảm reservedCount của zone
+     */
+    @Transactional
+    public ReservationResponse cancelReservation(User user, UUID reservationId) {
+        Reservation reservation = reservationRepository.findById(reservationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy đặt chỗ"));
+
+        if (!reservation.getUser().getId().equals(user.getId())) {
+            throw new BusinessException("Bạn không có quyền hủy đặt chỗ này");
+        }
+
+        if (reservation.getStatus() == Reservation.ReservationStatus.CANCELLED) {
+            throw new BusinessException("Đặt chỗ này đã bị hủy trước đó");
+        }
+
+        if (reservation.getStatus() == Reservation.ReservationStatus.COMPLETED) {
+            throw new BusinessException("Đặt chỗ đã hoàn tất, không thể hủy");
+        }
+
+        if (reservation.getStatus() == Reservation.ReservationStatus.EXPIRED) {
+            throw new BusinessException("Đặt chỗ đã hết hạn, không thể hủy");
+        }
+
+        Zone zone = reservation.getZone();
+        /*
+         * NOTE Quảng - Driver reservation:
+         * Khi hủy đặt chỗ, giảm reservedCount an toàn và không cho âm.
+         * Nếu zone đang FULL nhưng sau khi hủy còn chỗ thì trả về ACTIVE.
+         */
+        if (zone != null) {
+            int reservedCount = zone.getReservedCount() == null ? 0 : zone.getReservedCount();
+            int currentCount = zone.getCurrentCount() == null ? 0 : zone.getCurrentCount();
+            int capacity = zone.getCapacity() == null ? 0 : zone.getCapacity();
+
+            zone.setReservedCount(Math.max(0, reservedCount - 1));
+
+            if (zone.getStatus() == Zone.ZoneStatus.FULL
+                    && currentCount + zone.getReservedCount() < capacity) {
+                zone.setStatus(Zone.ZoneStatus.ACTIVE);
+            }
+
+            zoneRepository.save(zone);
+        }
+        reservation.setStatus(Reservation.ReservationStatus.CANCELLED);
+        Reservation savedReservation = reservationRepository.save(reservation);
+
+        return toResponse(savedReservation);
+    }
+
+    /**
+     * Kiểm tra biển số có thuộc driver hiện tại không.
+     *
+     * NOTE:
+     * Không dùng findByUserAndLicensePlate trực tiếp vì DB cũ có thể đang lưu lẫn:
+     * - 51F-123.45
+     * - 51F12345
+     * Stream + normalize giúp test Postman không bị lệch format.
+     */
+    private void validatePlateBelongsToUser(User user, String licensePlate) {
+        boolean existed = userLicensePlateRepository.findByUser(user)
+                .stream()
+                .anyMatch(item -> LicensePlateUtil.normalize(item.getLicensePlate()).equals(licensePlate));
+
+        if (!existed) {
+            throw new BusinessException("Biển số chưa được đăng ký bởi driver này");
+        }
+    }
+
+    /**
+     * Kiểm tra loại xe có khớp với zone không.
+     *
+     * Ví dụ:
+     * - Zone xe máy thì không được đặt bằng vehicleType ô tô.
+     */
+    private void validateZoneMatchesVehicleType(Zone zone, VehicleType vehicleType) {
+        if (!zone.getVehicleType().getId().equals(vehicleType.getId())) {
+            throw new BusinessException("Loại xe không phù hợp với zone đã chọn");
+        }
+    }
+
+    /**
+     * Kiểm tra zone còn chỗ không.
+     *
+     * Công thức theo docs:
+     * currentCount + reservedCount < capacity
+     */
+    private void validateZoneHasAvailableSlot(Zone zone) {
+        int currentCount = zone.getCurrentCount() == null ? 0 : zone.getCurrentCount();
+        int reservedCount = zone.getReservedCount() == null ? 0 : zone.getReservedCount();
+        int capacity = zone.getCapacity() == null ? 0 : zone.getCapacity();
+
+        if (zone.getStatus() != Zone.ZoneStatus.ACTIVE) {
+            throw new BusinessException("Zone hiện không hoạt động");
+        }
+
+        if (currentCount + reservedCount >= capacity) {
+            throw new BusinessException("Zone đã hết chỗ trống");
+        }
+    }
+
+    /**
+     * Kiểm tra biển số có đang có đặt chỗ chưa hoàn tất không.
+     *
+     * NOTE Quảng - Driver scope:
+     * Không dùng existsByUserAndLicensePlateAndStatusIn trực tiếp vì dữ liệu cũ có
+     * thể lệch format biển số.
+     */
+    private void validatePlateHasNoActiveReservation(User user, String licensePlate) {
+        boolean existed = reservationRepository.findByUserOrderByCreatedAtDesc(user)
+                .stream()
+                .filter(reservation -> reservation.getStatus() == Reservation.ReservationStatus.PENDING
+                        || reservation.getStatus() == Reservation.ReservationStatus.CONFIRMED)
+                .anyMatch(
+                        reservation -> LicensePlateUtil.normalize(reservation.getLicensePlate()).equals(licensePlate));
+
+        if (existed) {
+            throw new BusinessException("Biển số đang có đặt chỗ chưa hoàn tất");
+        }
+    }
+
+    /**
+     * Validate khung thời gian đặt chỗ của Driver.
+     *
+     * Quy tắc:
+     * - Không cho đặt trong quá khứ.
+     * - Không cho giữ chỗ quá 2 giờ để tránh khóa zone quá lâu.
+     */
+    private void validateReservationWindow(LocalDateTime reservedFrom, LocalDateTime reservedTo) {
+        LocalDateTime now = LocalDateTime.now();
+
+        if (reservedFrom.isBefore(now.minusMinutes(1))) {
+            throw new BusinessException("Không thể đặt chỗ trong quá khứ");
+        }
+
+        if (reservedTo.isAfter(reservedFrom.plusHours(2))) {
+            throw new BusinessException("Thời gian giữ chỗ tối đa là 2 giờ");
+        }
+    }
+
+    /**
+     * Chuyển Entity Reservation sang DTO ReservationResponse.
+     */
+    private ReservationResponse toResponse(Reservation reservation) {
+        Zone zone = reservation.getZone();
+
+        return ReservationResponse.builder()
+                .reservationId(reservation.getId())
+                .reservationCode(reservation.getReservationCode())
+                .zoneId(zone != null ? zone.getId() : null)
+                .zoneCode(zone != null ? zone.getZoneCode() : null)
+                .zoneName(zone != null ? zone.getZoneName() : null)
+                .floorName(zone != null && zone.getFloor() != null ? zone.getFloor().getFloorName() : null)
+                .vehicleTypeId(reservation.getVehicleType() != null ? reservation.getVehicleType().getId() : null)
+                .vehicleTypeName(reservation.getVehicleType() != null ? reservation.getVehicleType().getName() : null)
+                .licensePlate(reservation.getLicensePlate())
+                .reservedFrom(reservation.getReservedFrom())
+                .reservedTo(reservation.getReservedTo())
+                .status(reservation.getStatus())
+                .createdAt(reservation.getCreatedAt())
+                .build();
+    }
+
+    /**
+     * NOTE:
+     * Dùng chung chuẩn biển số với DriverController.
+     * Nhờ vậy:
+     * - Thêm biển số: 51F-123.45
+     * - Đặt chỗ: 51F12345 hoặc 51F-123.45
+     * đều hiểu là cùng một xe.
+     */
+    private String normalizePlate(String plate) {
+        String normalizedPlate = LicensePlateUtil.normalize(plate);
+
+        if (normalizedPlate.isBlank()) {
+            throw new BusinessException("Biển số không được để trống");
+        }
+
+        return normalizedPlate;
+    }
+
+    /**
+     * Sinh mã đặt chỗ theo format:
+     * RS + yyyyMMdd + "-" + random 4 ký tự
+     *
+     * Ví dụ:
+     * RS20260613-A7F2
+     */
+    private String generateReservationCode() {
+        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String random = UUID.randomUUID().toString().substring(0, 4).toUpperCase();
+
+        return "RS" + date + "-" + random;
+    }
 }

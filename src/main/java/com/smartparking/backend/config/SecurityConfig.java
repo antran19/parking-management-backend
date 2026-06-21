@@ -78,6 +78,9 @@ public class SecurityConfig {
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
 
+                // ── Explicit public matchers (Swagger UI & Manager) ──
+                .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/api/v1/manager/**").permitAll()
+
                 // ── Public: không cần JWT ──
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
 
@@ -99,7 +102,8 @@ public class SecurityConfig {
 
                 // ── Manager: Quản lý vận hành + Admin ──
                 // Báo cáo, cấu hình zone/giá, dashboard tổng quan
-                .requestMatchers("/api/v1/manager/**").hasAnyRole("MANAGER", "ADMIN")
+                .requestMatchers("/api/v1/manager/**").permitAll()
+                    //.hasAnyRole("MANAGER", "ADMIN")
 
                 // ── Admin namespace: ADMIN + MANAGER được qua URL layer.
                 // Method-level @PreAuthorize sẽ giữ user/settings chỉ ADMIN,

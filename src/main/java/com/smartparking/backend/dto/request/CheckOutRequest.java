@@ -25,6 +25,9 @@ public class CheckOutRequest {
     // Phương thức thanh toán: CASH, VNPAY, MOMO
     private String paymentMethod = "CASH";
 
+    private String exitPlateImageUrl;
+    private String exitFaceImageUrl;
+
     // Optional: ghi chú ngoại lệ (mất thẻ, sai biển số...)
     private String exceptionNote;
 }

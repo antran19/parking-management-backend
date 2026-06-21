@@ -14,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * SecurityExceptionService — Ghi nhận sự cố an ninh (Thiên phụ trách)
@@ -60,6 +62,7 @@ public class SecurityExceptionService {
                 .exceptionType(request.getExceptionType())
                 .description(request.getDescription())
                 .licensePlate(request.getLicensePlate())
+                .imageUrls(request.getImageUrls() != null && !request.getImageUrls().isEmpty() ? String.join(",", request.getImageUrls()) : null)
                 .handledBy(handledBy)
                 .resolvedAt(LocalDateTime.now())
                 .build();
@@ -80,12 +83,16 @@ public class SecurityExceptionService {
     }
 
     private ExceptionLogResponse mapToResponse(ExceptionLog entity) {
+        List<String> urlsList = entity.getImageUrls() != null && !entity.getImageUrls().isEmpty()
+                ? Arrays.asList(entity.getImageUrls().split(",")) : new ArrayList<>();
+
         return ExceptionLogResponse.builder()
                 .id(entity.getId())
                 .sessionId(entity.getSession() != null ? entity.getSession().getId() : null)
                 .licensePlate(entity.getLicensePlate())
                 .exceptionType(entity.getExceptionType() != null ? entity.getExceptionType().name() : null)
                 .description(entity.getDescription())
+                .imageUrls(urlsList)
                 .handledBy(entity.getHandledBy() != null ? entity.getHandledBy().getFullName() : null)
                 .resolvedAt(entity.getResolvedAt())
                 .createdAt(entity.getCreatedAt())

@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.List;
 
 @Data
 @Builder
@@ -18,6 +19,7 @@ public class ExceptionLogResponse {
     private String licensePlate;
     private String exceptionType;
     private String description;
+    private List<String> imageUrls;
     private String handledBy;
     private LocalDateTime resolvedAt;
     private LocalDateTime createdAt;

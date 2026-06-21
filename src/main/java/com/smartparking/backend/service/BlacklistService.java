@@ -20,7 +20,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -86,6 +89,7 @@ public class BlacklistService {
                 .normalizedPlate(normalizedPlate)
                 .reason(request.getReason())
                 .description(request.getDescription())
+                .imageUrls(request.getImageUrls() != null && !request.getImageUrls().isEmpty() ? String.join(",", request.getImageUrls()) : null)
                 .isActive(true)
                 .addedBy(addedBy)
                 .build();
@@ -193,12 +197,16 @@ public class BlacklistService {
         User addedBy = blacklistPlate.getAddedBy();
         User removedBy = blacklistPlate.getRemovedBy();
 
+        List<String> urlsList = blacklistPlate.getImageUrls() != null && !blacklistPlate.getImageUrls().isEmpty()
+                ? Arrays.asList(blacklistPlate.getImageUrls().split(",")) : new ArrayList<>();
+
         return BlacklistPlateResponse.builder()
                 .id(blacklistPlate.getId())
                 .licensePlate(blacklistPlate.getLicensePlate())
                 .normalizedPlate(blacklistPlate.getNormalizedPlate())
                 .reason(blacklistPlate.getReason())
                 .description(blacklistPlate.getDescription())
+                .imageUrls(urlsList)
                 .isActive(blacklistPlate.getIsActive())
                 .addedBy(addedBy != null ? addedBy.getFullName() : null)
                 .addedAt(blacklistPlate.getAddedAt())

@@ -34,6 +34,9 @@ public class ExceptionLog {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "image_urls", columnDefinition = "TEXT")
+    private String imageUrls; // Chuỗi các URL phân cách bởi dấu phẩy
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "handled_by")
     private User handledBy; // Nhân viên xử lý

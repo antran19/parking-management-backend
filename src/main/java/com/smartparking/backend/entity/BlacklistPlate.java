@@ -22,10 +22,10 @@ public class BlacklistPlate {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "license_plate", nullable = false, length = 20)
+    @Column(name = "license_plate", nullable = false, length = 50)
     private String licensePlate;
 
-    @Column(name = "normalized_plate", nullable = false, length = 20)
+    @Column(name = "normalized_plate", nullable = false, length = 50)
     private String normalizedPlate;
 
     @Enumerated(EnumType.STRING)
@@ -34,6 +34,9 @@ public class BlacklistPlate {
 
     @Column(columnDefinition = "TEXT")
     private String description;
+
+    @Column(name = "image_urls", columnDefinition = "TEXT")
+    private String imageUrls; // Chuỗi các URL phân cách bởi dấu phẩy
 
     @Builder.Default
     @Column(name = "is_active", nullable = false)

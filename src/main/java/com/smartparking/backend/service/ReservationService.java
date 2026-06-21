@@ -24,20 +24,6 @@ import java.util.UUID;
 /**
  * ReservationService — Đặt giữ chỗ zone (Quảng phụ trách)
  *
- * TODO (Quảng): Implement các method sau:
- * 1. createReservation(user, request)  → Validate zone còn chỗ → Tăng reservedCount → Tạo reservation
- * 2. getUserReservations(user)         → Lấy danh sách reservation theo user
- * 3. cancelReservation(user, id)       → Hủy reservation → Giảm reservedCount
- *
- * Lưu ý:
- * - Kiểm tra biển số đã có reservation PENDING/CONFIRMED chưa
- * - Kiểm tra loại xe có khớp zone không
- * - Kiểm tra zone còn chỗ: currentCount + reservedCount < capacity
- * - Sinh mã reservation: "RS" + yyyyMMdd + "-" + random 4 ký tự
- */
-/**
- * ReservationService — Đặt giữ chỗ zone (Quảng phụ trách)
- *
  * Nhiệm vụ:
  * - Tạo reservation
  * - Lấy danh sách reservation của driver
@@ -57,16 +43,22 @@ public class ReservationService {
     private final ZoneRepository zoneRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
     private final UserLicensePlateRepository userLicensePlateRepository;
+    private final BlacklistService blacklistService;
+    private final EmergencyService emergencyService;
 
     public ReservationService(
             ReservationRepository reservationRepository,
             ZoneRepository zoneRepository,
             VehicleTypeRepository vehicleTypeRepository,
-            UserLicensePlateRepository userLicensePlateRepository) {
+            UserLicensePlateRepository userLicensePlateRepository,
+            BlacklistService blacklistService,
+            EmergencyService emergencyService) {
         this.reservationRepository = reservationRepository;
         this.zoneRepository = zoneRepository;
         this.vehicleTypeRepository = vehicleTypeRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
+        this.blacklistService = blacklistService;
+        this.emergencyService = emergencyService;
     }
 
     /**
@@ -93,6 +85,13 @@ public class ReservationService {
 
         String licensePlate = normalizePlate(request.getLicensePlate());
 
+        /*
+        * Quảng - Driver scope:
+        * Chỉ gọi service của role khác, không sửa service của role khác.
+        */
+        emergencyService.ensureNormalOperation();
+        blacklistService.ensurePlateNotBlacklisted(licensePlate);
+
         validatePlateBelongsToUser(user, licensePlate);
         validateZoneMatchesVehicleType(zone, vehicleType);
         validateZoneHasAvailableSlot(zone);
@@ -112,11 +111,6 @@ public class ReservationService {
 
         validateReservationWindow(reservedFrom, reservedTo);
 
-        /*
-         * NOTE Quảng - Driver reservation:
-         * Chống NullPointerException nếu dữ liệu zone cũ có reservedCount = null.
-         * Nếu zone vừa đầy sau khi giữ chỗ thì đổi trạng thái sang FULL.
-         */
         int currentCount = zone.getCurrentCount() == null ? 0 : zone.getCurrentCount();
         int capacity = zone.getCapacity() == null ? 0 : zone.getCapacity();
         int newReservedCount = (zone.getReservedCount() == null ? 0 : zone.getReservedCount()) + 1;
@@ -144,7 +138,7 @@ public class ReservationService {
 
         return toResponse(savedReservation);
     }
-
+    
     /**
      * Lấy danh sách đặt chỗ của driver đang đăng nhập.
      */

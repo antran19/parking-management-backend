@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import jakarta.servlet.http.HttpServletRequest;
+import com.smartparking.backend.entity.Payment;
 import com.smartparking.backend.entity.Reservation;
 import com.smartparking.backend.repository.ReservationRepository;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -34,10 +36,12 @@ import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.repository.BuildingRepository;
 import com.smartparking.backend.repository.ParkingPassRepository;
+import com.smartparking.backend.repository.PaymentRepository;
 import com.smartparking.backend.repository.PricingRuleRepository;
 import com.smartparking.backend.repository.UserLicensePlateRepository;
 import com.smartparking.backend.repository.UserRepository;
 import com.smartparking.backend.repository.VehicleTypeRepository;
+import com.smartparking.backend.service.VnPayService;
 import com.smartparking.backend.util.LicensePlateUtil;
 
 import jakarta.validation.Valid;
@@ -57,7 +61,7 @@ import lombok.Data;
  * driver
  * - POST /api/v1/driver/parking-passes -- đăng ký vé tháng/quý/năm mới
  * - DELETE /api/v1/driver/parking-passes/{passId}/cancel -- hủy đơn vé đang chờ
- * thanh toánmvn clean compile
+ * thanh toán
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -75,6 +79,8 @@ public class DriverController {
     private final ParkingPassRepository parkingPassRepository;
     private final BuildingRepository buildingRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
+    private final PaymentRepository paymentRepository;
+    private final VnPayService vnPayService;
 
     public DriverController(
             UserRepository userRepository,
@@ -83,7 +89,9 @@ public class DriverController {
             ReservationRepository reservationRepository,
             ParkingPassRepository parkingPassRepository,
             BuildingRepository buildingRepository,
-            VehicleTypeRepository vehicleTypeRepository) {
+            VehicleTypeRepository vehicleTypeRepository,
+            PaymentRepository paymentRepository,
+            VnPayService vnPayService) {
         this.userRepository = userRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
         this.pricingRuleRepository = pricingRuleRepository;
@@ -91,6 +99,8 @@ public class DriverController {
         this.parkingPassRepository = parkingPassRepository;
         this.buildingRepository = buildingRepository;
         this.vehicleTypeRepository = vehicleTypeRepository;
+        this.paymentRepository = paymentRepository;
+        this.vnPayService = vnPayService;
     }
 
     /**
@@ -313,14 +323,14 @@ public class DriverController {
      *
      * NOTE:
      * Vé mới tạo sẽ ở trạng thái PENDING_PAYMENT.
-     * paymentUrl bên dưới là URL demo để FE chuyển sang trang payment-return.
-     * Chưa phải VNPay thật.
+     * Backend tạo Payment PENDING và trả paymentUrl VNPay sandbox để FE redirect.
      */
     @PostMapping("/driver/parking-passes")
     @Transactional
     public ApiResponse<Map<String, Object>> registerParkingPass(
             Authentication authentication,
-            @Valid @RequestBody RegisterParkingPassRequest request) {
+            @Valid @RequestBody RegisterParkingPassRequest request,
+            HttpServletRequest httpRequest) {
         User currentUser = getCurrentUser(authentication);
         String licensePlate = normalizeAndValidatePlate(request.getLicensePlate());
 
@@ -354,13 +364,9 @@ public class DriverController {
 
         ParkingPass savedPass = parkingPassRepository.save(parkingPass);
 
-        Map<String, Object> data = toParkingPassResponse(savedPass);
-        data.put("paymentStatus", "PENDING_PAYMENT");
-        data.put("paymentUrl", null);
-        data.put("note",
-                "Vé đã được tạo đúng ở trạng thái chờ thanh toán. URL VNPay thật sẽ được module Payment của Toàn tạo sau khi merge.");
+        Map<String, Object> data = createOrReusePassPayment(savedPass, httpRequest);
 
-        return ApiResponse.success("Tạo vé gửi xe thành công, chờ thanh toán", data);
+        return ApiResponse.success("Tạo vé gửi xe thành công, chờ thanh toán VNPay", data);
     }
 
     /**
@@ -368,14 +374,14 @@ public class DriverController {
      *
      * NOTE Quảng - Driver scope:
      * - Driver chỉ validate vé của chính mình và trạng thái PENDING_PAYMENT.
-     * - Không tạo fake VNPay URL.
-     * - VNPay URL thật sẽ do PaymentController/VnPayService của Toàn xử lý sau khi
-     * merge.
+     * - Không tạo fake URL.
+     * - Gọi VnPayService để tạo URL thanh toán sandbox và chờ callback kích hoạt vé.
      */
     @PostMapping("/driver/parking-passes/{passId}/pay")
     public ApiResponse<Map<String, Object>> continueParkingPassPayment(
             Authentication authentication,
-            @PathVariable UUID passId) {
+            @PathVariable UUID passId,
+            HttpServletRequest httpRequest) {
         User currentUser = getCurrentUser(authentication);
 
         ParkingPass parkingPass = parkingPassRepository.findById(passId)
@@ -401,13 +407,9 @@ public class DriverController {
             throw new BusinessException("Chỉ có thể thanh toán vé đang chờ thanh toán");
         }
 
-        Map<String, Object> data = toParkingPassResponse(parkingPass);
-        data.put("paymentStatus", "PENDING_PAYMENT");
-        data.put("paymentUrl", null);
-        data.put("note",
-                "Vé hợp lệ và đang chờ thanh toán. Module Payment/VNPay của Toàn sẽ tạo paymentUrl thật sau khi merge.");
+        Map<String, Object> data = createOrReusePassPayment(parkingPass, httpRequest);
 
-        return ApiResponse.success("Vé hợp lệ, chờ module Payment tạo URL thanh toán", data);
+        return ApiResponse.success("Vé hợp lệ, đã tạo liên kết thanh toán VNPay", data);
     }
 
     /**
@@ -446,6 +448,58 @@ public class DriverController {
     // PRIVATE HELPER METHODS
     // Các hàm phụ trợ bên dưới giúp controller gọn hơn.
     // =========================================================
+
+
+    /**
+     * Tạo hoặc tái sử dụng đơn thanh toán VNPay cho parking pass.
+     *
+     * Flow này ghép phần Driver với module Payment/VNPay đã merge ở nhánh develop:
+     * - Driver tạo parking pass ở trạng thái PENDING_PAYMENT.
+     * - Backend tạo Payment PENDING referenceType = PASS.
+     * - Backend trả paymentUrl để FE redirect sang VNPay sandbox.
+     * - Khi VNPay callback /driver/payments/vnpay-return hoặc /vnpay-ipn,
+     *   PaymentController sẽ kích hoạt pass nếu giao dịch thành công.
+     */
+    private Map<String, Object> createOrReusePassPayment(ParkingPass pass, HttpServletRequest request) {
+        BigDecimal amount = pass.getFee() == null ? BigDecimal.ZERO : pass.getFee();
+
+        Payment payment = paymentRepository.findByReferenceTypeAndReferenceId("PASS", pass.getId())
+                .stream()
+                .filter(item -> item.getPaymentMethod() == Payment.PaymentMethod.ONLINE)
+                .filter(item -> item.getStatus() != Payment.PaymentStatus.COMPLETED)
+                .findFirst()
+                .orElseGet(() -> Payment.builder()
+                        .referenceType("PASS")
+                        .referenceId(pass.getId())
+                        .amount(amount)
+                        .paymentMethod(Payment.PaymentMethod.ONLINE)
+                        .status(Payment.PaymentStatus.PENDING)
+                        .transactionId(generatePassOrderCode(pass.getId()))
+                        .build());
+
+        payment.setAmount(amount);
+        payment.setStatus(Payment.PaymentStatus.PENDING);
+        if (payment.getTransactionId() == null || payment.getTransactionId().isBlank()) {
+            payment.setTransactionId(generatePassOrderCode(pass.getId()));
+        }
+        payment = paymentRepository.save(payment);
+
+        String orderInfo = "Thanh toan ve gui xe " + pass.getPassType() + " bien so " + pass.getLicensePlate();
+        String paymentUrl = vnPayService.createPaymentUrl(payment.getTransactionId(), amount, orderInfo, request);
+
+        Map<String, Object> data = toParkingPassResponse(pass);
+        data.put("paymentStatus", payment.getStatus());
+        data.put("paymentId", payment.getId());
+        data.put("orderCode", payment.getTransactionId());
+        data.put("paymentUrl", paymentUrl);
+        data.put("note", "Chuyển tới VNPay sandbox để thanh toán và kích hoạt vé.");
+
+        return data;
+    }
+
+    private String generatePassOrderCode(UUID passId) {
+        return "PASS-" + passId.toString().replace("-", "").substring(0, 16).toUpperCase();
+    }
 
     /**
      * Chuyển entity ParkingPass thành Map để FE dễ đọc.

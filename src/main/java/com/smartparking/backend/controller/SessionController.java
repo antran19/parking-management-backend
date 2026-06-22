@@ -5,11 +5,19 @@ import com.smartparking.backend.dto.request.CheckOutRequest;
 import com.smartparking.backend.dto.request.CheckInZoneRequest;
 import com.smartparking.backend.dto.response.ApiResponse;
 import com.smartparking.backend.dto.response.SessionResponse;
+import com.smartparking.backend.entity.User;
+import com.smartparking.backend.entity.UserLicensePlate;
+import com.smartparking.backend.exception.BusinessException;
+import com.smartparking.backend.exception.ResourceNotFoundException;
+import com.smartparking.backend.repository.UserLicensePlateRepository;
+import com.smartparking.backend.repository.UserRepository;
 import com.smartparking.backend.service.ParkingSessionService;
+import com.smartparking.backend.util.LicensePlateUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.data.domain.Page;
 
@@ -30,9 +38,16 @@ import java.util.Map;
 public class SessionController {
 
     private final ParkingSessionService parkingSessionService;
+    private final UserRepository userRepository;
+    private final UserLicensePlateRepository userLicensePlateRepository;
 
-    public SessionController(ParkingSessionService parkingSessionService) {
+    public SessionController(
+            ParkingSessionService parkingSessionService,
+            UserRepository userRepository,
+            UserLicensePlateRepository userLicensePlateRepository) {
         this.parkingSessionService = parkingSessionService;
+        this.userRepository = userRepository;
+        this.userLicensePlateRepository = userLicensePlateRepository;
     }
 
     /**
@@ -122,8 +137,11 @@ public class SessionController {
     @PostMapping("/driver/sessions/checkout/vnpay")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> initiateVnPayCheckout(
+            Authentication authentication,
             @RequestBody Map<String, String> body,
             HttpServletRequest request) {
+        String readablePlate = ensureDriverCanReadPlate(authentication, body.get("licensePlate"));
+        body.put("licensePlate", readablePlate);
         Map<String, Object> response = parkingSessionService.initiateDriverVnPayCheckout(body, request);
         return ResponseEntity.ok(ApiResponse.success("Đã tạo liên kết thanh toán VNPay cho phiên gửi xe", response));
     }
@@ -134,8 +152,10 @@ public class SessionController {
     @GetMapping("/driver/sessions/active")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> getActiveSession(
+            Authentication authentication,
             @RequestParam("plate") String licensePlate) {
-        SessionResponse response = parkingSessionService.getActiveSession(licensePlate);
+        String readablePlate = ensureDriverCanReadPlate(authentication, licensePlate);
+        SessionResponse response = parkingSessionService.getActiveSession(readablePlate);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -145,8 +165,49 @@ public class SessionController {
     @GetMapping("/driver/sessions/history")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<java.util.List<SessionResponse>>> getSessionHistory(
+            Authentication authentication,
             @RequestParam("plate") String licensePlate) {
-        java.util.List<SessionResponse> history = parkingSessionService.getSessionHistory(licensePlate);
+        String readablePlate = ensureDriverCanReadPlate(authentication, licensePlate);
+        java.util.List<SessionResponse> history = parkingSessionService.getSessionHistory(readablePlate);
         return ResponseEntity.ok(ApiResponse.success(history));
     }
+    /**
+     * Driver chỉ được xem active session/history của biển số thuộc tài khoản mình.
+     * Staff/Manager/Admin vẫn được tra cứu toàn bộ để phục vụ nghiệp vụ soát vé.
+     */
+    private String ensureDriverCanReadPlate(Authentication authentication, String rawPlate) {
+        String normalizedPlate = LicensePlateUtil.normalize(rawPlate);
+        if (normalizedPlate.isBlank()) {
+            throw new BusinessException("Biển số không được để trống");
+        }
+
+        if (authentication == null || authentication.getName() == null) {
+            throw new BusinessException("Bạn cần đăng nhập để xem phiên gửi xe");
+        }
+
+        boolean isDriver = authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_DRIVER".equals(authority.getAuthority()));
+        boolean hasElevatedRole = authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_STAFF".equals(authority.getAuthority())
+                        || "ROLE_MANAGER".equals(authority.getAuthority())
+                        || "ROLE_ADMIN".equals(authority.getAuthority()));
+
+        if (isDriver && !hasElevatedRole) {
+            User currentUser = userRepository.findByEmail(authentication.getName())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản driver"));
+
+            boolean plateBelongsToUser = userLicensePlateRepository.findByUser(currentUser)
+                    .stream()
+                    .map(UserLicensePlate::getLicensePlate)
+                    .map(LicensePlateUtil::normalize)
+                    .anyMatch(normalizedPlate::equals);
+
+            if (!plateBelongsToUser) {
+                throw new BusinessException("Bạn không có quyền xem phiên gửi xe của biển số này");
+            }
+        }
+
+        return normalizedPlate;
+    }
+
 }

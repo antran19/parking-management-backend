@@ -4,6 +4,7 @@ import com.smartparking.backend.dto.request.CheckInRequest;
 import com.smartparking.backend.dto.request.CheckOutRequest;
 import com.smartparking.backend.dto.request.CheckInZoneRequest;
 import com.smartparking.backend.dto.response.SessionResponse;
+import com.smartparking.backend.util.LicensePlateUtil;
 import com.smartparking.backend.entity.*;
 import com.smartparking.backend.entity.ParkingSession.SessionStatus;
 import com.smartparking.backend.exception.BusinessException;
@@ -174,15 +175,19 @@ public class ParkingSessionService {
         } else {
             // Tự động khớp reservation theo biển số xe
             LocalDateTime now = LocalDateTime.now();
+            String normalizedPlate = LicensePlateUtil.normalize(request.getLicensePlate());
+
             List<Reservation> activeReservations = reservationRepository.findByLicensePlateAndStatusIn(
-                request.getLicensePlate(),
+                normalizedPlate,
                 List.of(Reservation.ReservationStatus.CONFIRMED, Reservation.ReservationStatus.PENDING)
             );
+
             for (Reservation res : activeReservations) {
                 if (res.getZone().getFloor().getBuilding().getId().equals(mainGate.getBuilding().getId())) {
-                    // Xem khung giờ có hợp lệ không (vào sớm tối đa 60 phút và trước khi hết giờ đặt)
+                    // Xem khung giờ có hợp lệ không: vào sớm tối đa 60 phút và trước khi hết giờ đặt
                     LocalDateTime allowedFrom = res.getReservedFrom().minusMinutes(60);
                     LocalDateTime allowedTo = res.getReservedTo();
+
                     if (!now.isBefore(allowedFrom) && !now.isAfter(allowedTo)) {
                         reservation = res;
                         break;
@@ -749,10 +754,17 @@ public class ParkingSessionService {
 
         // 2. Nếu chưa tìm thấy khách hàng, kiểm tra đặt trước (Reservation)
         if (customerName == null) {
+            String normalizedSessionPlate = LicensePlateUtil.normalize(session.getLicensePlate());
+
             List<Reservation> reservations = reservationRepository.findByLicensePlateAndStatusIn(
-                    session.getLicensePlate(),
-                    List.of(Reservation.ReservationStatus.COMPLETED, Reservation.ReservationStatus.CONFIRMED, Reservation.ReservationStatus.PENDING)
+                    normalizedSessionPlate,
+                    List.of(
+                            Reservation.ReservationStatus.COMPLETED,
+                            Reservation.ReservationStatus.CONFIRMED,
+                            Reservation.ReservationStatus.PENDING
+                    )
             );
+
             if (!reservations.isEmpty() && reservations.get(0).getUser() != null) {
                 customerName = reservations.get(0).getUser().getFullName();
             }

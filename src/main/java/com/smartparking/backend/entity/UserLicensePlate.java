@@ -33,6 +33,10 @@ public class UserLicensePlate {
     @Column(name = "license_plate", nullable = false, length = 15)
     private String licensePlate;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "vehicle_type_id")
+    private VehicleType vehicleType;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

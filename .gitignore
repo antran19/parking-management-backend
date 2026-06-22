@@ -1,0 +1,34 @@
+# Maven build output
+target/
+
+# Java compiled files
+*.class
+*.jar
+*.war
+*.ear
+
+# Environment / local config
+.env
+.env.*.local
+application-local.yml
+application-local.properties
+
+# Logs
+logs/
+*.log
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+target/
+.idea/
+.vscode/
+*.log
+
+.embold/

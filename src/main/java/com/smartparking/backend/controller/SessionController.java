@@ -21,17 +21,25 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.data.domain.Page;
 
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import com.smartparking.backend.dto.response.EligibleZoneResponse;
 
 /**
  * SessionController — API quản lý phiên gửi xe (Parking Session).
- * Được thiết kế theo chuẩn RESTful chuyên nghiệp, phân tách rõ nhóm Staff và Driver.
+ * Được thiết kế theo chuẩn RESTful chuyên nghiệp, phân tách rõ nhóm Staff và
+ * Driver.
  *
  * Endpoints:
- *   - POST /api/v1/staff/sessions/checkin   → Check-in xe vào bãi (Chỉ STAFF trở lên)
- *   - POST /api/v1/staff/sessions/checkout  → Check-out xe ra bãi (Chỉ STAFF trở lên)
- *   - GET  /api/v1/driver/sessions/active   → Xem session đang mở của tài xế (Tài xế + Staff)
- *   - GET  /api/v1/driver/sessions/history  → Lịch sử gửi xe theo biển số (Tài xế + Staff)
+ * - POST /api/v1/staff/sessions/checkin → Check-in xe vào bãi (Chỉ STAFF trở
+ * lên)
+ * - POST /api/v1/staff/sessions/checkout → Check-out xe ra bãi (Chỉ STAFF trở
+ * lên)
+ * - GET /api/v1/driver/sessions/active → Xem session đang mở của tài xế (Tài xế
+ * + Staff)
+ * - GET /api/v1/driver/sessions/history → Lịch sử gửi xe theo biển số (Tài xế +
+ * Staff)
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -84,6 +92,29 @@ public class SessionController {
     }
 
     /**
+     * Lấy danh sách phân khu khả dụng để thay đổi gợi ý đỗ xe.
+     */
+    @GetMapping("/staff/sessions/{sessionId}/eligible-zones")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<List<EligibleZoneResponse>>> getEligibleZones(
+            @PathVariable UUID sessionId) {
+        List<EligibleZoneResponse> response = parkingSessionService.getEligibleZones(sessionId);
+        return ResponseEntity.ok(ApiResponse.success("Lấy danh sách phân khu thành công", response));
+    }
+
+    /**
+     * Thay đổi phân khu đỗ xe chỉ định cho session.
+     */
+    @PutMapping("/staff/sessions/{sessionId}/change-zone")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<SessionResponse>> changeSessionZone(
+            @PathVariable UUID sessionId,
+            @RequestParam UUID zoneId) {
+        SessionResponse response = parkingSessionService.changeSessionZone(sessionId, zoneId);
+        return ResponseEntity.ok(ApiResponse.success("Thay đổi phân khu đỗ xe thành công", response));
+    }
+
+    /**
      * Check-out xe ra bãi — chỉ STAFF trở lên.
      */
     @PostMapping("/staff/sessions/checkout")
@@ -96,7 +127,23 @@ public class SessionController {
     }
 
     /**
-     * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân trang và tìm kiếm).
+     * Cập nhật URL ảnh lên phiên đỗ xe (sau khi Check-in/Check-out thành công).
+     */
+    @PutMapping("/staff/sessions/{sessionId}/images")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> updateSessionImages(
+            @PathVariable UUID sessionId,
+            @RequestBody Map<String, Object> payload) {
+        String plateUrl = (String) payload.get("plateUrl");
+        String faceUrl = (String) payload.get("faceUrl");
+        Boolean isEntry = (Boolean) payload.get("isEntry");
+        parkingSessionService.updateSessionImages(sessionId, plateUrl, faceUrl, Boolean.TRUE.equals(isEntry));
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật ảnh thành công", null));
+    }
+
+    /**
+     * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân
+     * trang và tìm kiếm).
      */
     @GetMapping("/staff/sessions/history")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
@@ -105,7 +152,7 @@ public class SessionController {
             @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "licensePlate", required = false) String licensePlate,
             @RequestParam(value = "status", required = false) String status) {
-        
+
         com.smartparking.backend.entity.ParkingSession.SessionStatus sessionStatus = null;
         if (status != null && !status.trim().isEmpty() && !"all".equalsIgnoreCase(status)) {
             try {
@@ -114,25 +161,26 @@ public class SessionController {
                 } else if ("checked_out".equalsIgnoreCase(status)) {
                     sessionStatus = com.smartparking.backend.entity.ParkingSession.SessionStatus.COMPLETED;
                 } else {
-                    sessionStatus = com.smartparking.backend.entity.ParkingSession.SessionStatus.valueOf(status.toUpperCase());
+                    sessionStatus = com.smartparking.backend.entity.ParkingSession.SessionStatus
+                            .valueOf(status.toUpperCase());
                 }
             } catch (IllegalArgumentException e) {
                 // Ignore invalid status enum string
             }
         }
-        
+
         if (page == null || size == null) {
             java.util.List<SessionResponse> history = parkingSessionService.getAllSessions();
             return ResponseEntity.ok(ApiResponse.success(history));
         }
-        
+
         Page<SessionResponse> history = parkingSessionService.searchSessions(licensePlate, sessionStatus, page, size);
         return ResponseEntity.ok(ApiResponse.success(history));
     }
 
-
     /**
-     * Driver khởi tạo thanh toán VNPay sandbox để check-out phiên gửi xe đang hoạt động.
+     * Driver khởi tạo thanh toán VNPay sandbox để check-out phiên gửi xe đang hoạt
+     * động.
      */
     @PostMapping("/driver/sessions/checkout/vnpay")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
@@ -147,7 +195,8 @@ public class SessionController {
     }
 
     /**
-     * Xem session đang hoạt động của Driver — Mọi authenticated user (Driver/Staff) có quyền truy cập.
+     * Xem session đang hoạt động của Driver — Mọi authenticated user (Driver/Staff)
+     * có quyền truy cập.
      */
     @GetMapping("/driver/sessions/active")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
@@ -160,7 +209,8 @@ public class SessionController {
     }
 
     /**
-     * Lịch sử gửi xe theo biển số — Mọi authenticated user (Driver/Staff) có quyền truy cập.
+     * Lịch sử gửi xe theo biển số — Mọi authenticated user (Driver/Staff) có quyền
+     * truy cập.
      */
     @GetMapping("/driver/sessions/history")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
@@ -171,6 +221,7 @@ public class SessionController {
         java.util.List<SessionResponse> history = parkingSessionService.getSessionHistory(readablePlate);
         return ResponseEntity.ok(ApiResponse.success(history));
     }
+
     /**
      * Driver chỉ được xem active session/history của biển số thuộc tài khoản mình.
      * Staff/Manager/Admin vẫn được tra cứu toàn bộ để phục vụ nghiệp vụ soát vé.

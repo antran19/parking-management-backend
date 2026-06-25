@@ -22,7 +22,4 @@ public interface ExceptionLogRepository extends JpaRepository<ExceptionLog, UUID
 
     @Query("SELECT COUNT(e) FROM ExceptionLog e WHERE e.createdAt >= :start AND e.createdAt < :end")
     long countExceptionsBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
-
-    @Query("SELECT COUNT(e) FROM ExceptionLog e WHERE e.licensePlate = :licensePlate AND e.exceptionType = com.smartparking.backend.entity.ExceptionLog.ExceptionType.WRONG_ZONE AND e.createdAt >= :since")
-    long countWrongZoneByLicensePlateSince(@Param("licensePlate") String licensePlate, @Param("since") LocalDateTime since);
 }

@@ -148,7 +148,7 @@ public class ParkingConfigController {
 
     @PutMapping("/zones/{id}/status")
     @Transactional
-    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
     @Operation(summary = "Update zone status (ACTIVE/MAINTENANCE/CLOSED)")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateZoneStatus(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
         Zone zone = zoneRepository.findById(id).orElseThrow(() -> new NoSuchElementException("Zone không tồn tại"));

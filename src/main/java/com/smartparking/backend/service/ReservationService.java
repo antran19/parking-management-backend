@@ -1,4 +1,5 @@
 package com.smartparking.backend.service;
+
 import com.smartparking.backend.entity.UserLicensePlate;
 import com.smartparking.backend.dto.request.ReservationRequest;
 import com.smartparking.backend.dto.response.ReservationResponse;
@@ -87,9 +88,9 @@ public class ReservationService {
         String licensePlate = normalizePlate(request.getLicensePlate());
 
         /*
-        * Quảng - Driver scope:
-        * Chỉ gọi service của role khác, không sửa service của role khác.
-        */
+         * Quảng - Driver scope:
+         * Chỉ gọi service của role khác, không sửa service của role khác.
+         */
         emergencyService.ensureNormalOperation();
         blacklistService.ensurePlateNotBlacklisted(licensePlate);
 
@@ -140,7 +141,7 @@ public class ReservationService {
 
         return toResponse(savedReservation);
     }
-    
+
     /**
      * Lấy danh sách đặt chỗ của driver đang đăng nhập.
      */
@@ -225,7 +226,8 @@ public class ReservationService {
 
     private void validatePlateVehicleTypeMatches(UserLicensePlate userPlate, VehicleType vehicleType) {
         if (userPlate.getVehicleType() == null) {
-            throw new BusinessException("Biển số chưa được gắn loại xe. Vui lòng cập nhật loại xe trong hồ sơ trước khi đặt chỗ");
+            throw new BusinessException(
+                    "Biển số chưa được gắn loại xe. Vui lòng cập nhật loại xe trong hồ sơ trước khi đặt chỗ");
         }
 
         if (!userPlate.getVehicleType().getId().equals(vehicleType.getId())) {

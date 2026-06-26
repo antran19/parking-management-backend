@@ -29,6 +29,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import com.smartparking.backend.dto.response.EligibleZoneResponse;
+import java.util.stream.Collectors;
 import java.util.UUID;
 
 /**
@@ -150,6 +152,9 @@ public class ParkingSessionService {
         java.time.LocalDate today = java.time.LocalDate.now();
         for (ParkingPass pass : activePasses) {
             if (!today.isBefore(pass.getStartDate()) && !today.isAfter(pass.getEndDate())) {
+                if (!pass.getVehicleType().getId().equals(vehicleType.getId())) {
+                    throw new BusinessException("Loại phương tiện không khớp với vé tháng. Vé tháng của bạn đăng ký cho " + pass.getVehicleType().getName() + " nhưng bạn đang gửi " + vehicleType.getName() + ".");
+                }
                 hasValidPass = true;
                 break;
             }
@@ -172,6 +177,9 @@ public class ParkingSessionService {
             if (!reservedPlate.equals(requestPlate)) {
                 throw new BusinessException("Biển số không khớp với reservation");
             }
+            if (!reservation.getVehicleType().getId().equals(vehicleType.getId())) {
+                throw new BusinessException("Loại phương tiện không khớp với thông tin đặt chỗ trước. Bạn đặt chỗ cho " + reservation.getVehicleType().getName() + " nhưng đang gửi " + vehicleType.getName() + ".");
+            }
         } else {
             // Tự động khớp reservation theo biển số xe
             LocalDateTime now = LocalDateTime.now();
@@ -189,6 +197,9 @@ public class ParkingSessionService {
                     LocalDateTime allowedTo = res.getReservedTo();
 
                     if (!now.isBefore(allowedFrom) && !now.isAfter(allowedTo)) {
+                        if (!res.getVehicleType().getId().equals(vehicleType.getId())) {
+                            throw new BusinessException("Loại phương tiện không khớp với thông tin đặt chỗ trước. Bạn đặt chỗ cho " + res.getVehicleType().getName() + " nhưng đang gửi " + vehicleType.getName() + ".");
+                        }
                         reservation = res;
                         break;
                     }
@@ -198,10 +209,23 @@ public class ParkingSessionService {
 
         if (reservation != null) {
             assignedZone = reservation.getZone();
+            // Đổi chỗ từ reservedCount sang currentCount
+            if (assignedZone.getReservedCount() > 0) {
+                assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
+            }
+            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
         } else {
             // Trường hợp khách vãng lai hoặc thuê bao tháng thông thường
             assignedZone = zoneSuggestionService.suggestZone(vehicleType);
+            // Cộng trực tiếp currentCount của Zone được gợi ý
+            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
         }
+
+        // Cập nhật trạng thái Zone nếu đầy
+        if (assignedZone.getCurrentCount() + assignedZone.getReservedCount() >= assignedZone.getCapacity()) {
+            assignedZone.setStatus(Zone.ZoneStatus.FULL);
+        }
+        zoneRepository.save(assignedZone);
 
         // Bước 5: Sinh mã session duy nhất
         String sessionCode = generateSessionCode();
@@ -250,6 +274,25 @@ public class ParkingSessionService {
     }
 
     /**
+     * Cập nhật URL ảnh (từ Cloudinary) cho Session (sau khi Check-in/Check-out thành công).
+     */
+    @Transactional
+    public void updateSessionImages(UUID sessionId, String plateUrl, String faceUrl, boolean isEntry) {
+        ParkingSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên gửi xe"));
+                
+        if (isEntry) {
+            if (plateUrl != null && !plateUrl.isEmpty()) session.setEntryPlateImageUrl(plateUrl);
+            if (faceUrl != null && !faceUrl.isEmpty()) session.setEntryFaceImageUrl(faceUrl);
+        } else {
+            if (plateUrl != null && !plateUrl.isEmpty()) session.setExitPlateImageUrl(plateUrl);
+            if (faceUrl != null && !faceUrl.isEmpty()) session.setExitFaceImageUrl(faceUrl);
+        }
+        
+        sessionRepository.save(session);
+    }
+
+    /**
      * Xử lý xe đi vào Zone cụ thể (Check-in lần 2):
      * 1. Tìm phiên gửi xe đang hoạt động bằng Session Code hoặc biển số.
      * 2. Kiểm tra nếu đã check-in vào zone trước đó.
@@ -293,59 +336,12 @@ public class ParkingSessionService {
 
         Zone suggestedZone = session.getZone();
         boolean isWrongZone = !targetZone.getId().equals(suggestedZone.getId());
-        long wrongZoneCount = 0;
 
-        // 5. Nếu đi sai Zone gợi ý
+        // 5. Nếu đi sai Zone gợi ý -> Từ chối thẳng, không cho vào
         if (isWrongZone) {
-            // Nếu là khách đặt trước (PRE_BOOKED) -> Bắt buộc đỗ đúng Zone
-            if (session.getDriverType() == ParkingSession.DriverType.PRE_BOOKED) {
-                throw new BusinessException("Bạn có lịch đặt chỗ trước tại Zone " + suggestedZone.getZoneName()
-                        + ". Vui lòng đỗ đúng vị trí đã đặt.");
-            }
-
-            // Đếm số lần đi sai Zone trong 30 ngày qua
-            LocalDateTime since = LocalDateTime.now().minusDays(30);
-            wrongZoneCount = exceptionLogRepository.countWrongZoneByLicensePlateSince(session.getLicensePlate(), since);
-
-            if (wrongZoneCount >= 3) {
-                throw new BusinessException("Bạn đã đi sai Zone gợi ý " + wrongZoneCount + " lần trong 30 ngày qua (Vượt quá giới hạn 3 lần/tháng). Barie không mở.");
-            }
-
-            // Ghi nhận Exception Log loại WRONG_ZONE
-            ExceptionLog wrongLog = ExceptionLog.builder()
-                    .session(session)
-                    .exceptionType(ExceptionLog.ExceptionType.WRONG_ZONE)
-                    .licensePlate(session.getLicensePlate())
-                    .description("Đi sai Zone chỉ định: Gợi ý " + suggestedZone.getZoneName() + " nhưng vào " + targetZone.getZoneName())
-                    .build();
-            exceptionLogRepository.save(wrongLog);
-            wrongZoneCount++; // Tăng biến hiển thị lên
-
-            // Cập nhật lại Zone thực tế vào Session
-            session.setZone(targetZone);
+            throw new BusinessException("Từ chối vào cổng: Sai Zone đỗ xe chỉ định! Zone đỗ xe trên vé của bạn là "
+                    + suggestedZone.getZoneName() + ", vui lòng di chuyển sang đúng cổng Zone này.");
         }
-
-        // 6. Kiểm tra sức chứa và cập nhật đỗ xe
-        int occupied = targetZone.getCurrentCount() + targetZone.getReservedCount();
-        if (session.getDriverType() == ParkingSession.DriverType.PRE_BOOKED) {
-            // Đối với khách đặt trước: chỗ của họ đã được tính trong reservedCount, giờ ta đổi thành currentCount
-            if (targetZone.getReservedCount() > 0) {
-                targetZone.setReservedCount(targetZone.getReservedCount() - 1);
-            }
-            targetZone.setCurrentCount(targetZone.getCurrentCount() + 1);
-        } else {
-            // Đối với khách vãng lai/vé tháng: kiểm tra xem zone có đầy không
-            if (targetZone.getStatus() == Zone.ZoneStatus.FULL || occupied >= targetZone.getCapacity()) {
-                throw new BusinessException("Khu vực đỗ xe " + targetZone.getZoneName() + " đã đầy chỗ.");
-            }
-            targetZone.setCurrentCount(targetZone.getCurrentCount() + 1);
-        }
-
-        // Cập nhật trạng thái Zone nếu đầy
-        if (targetZone.getCurrentCount() + targetZone.getReservedCount() >= targetZone.getCapacity()) {
-            targetZone.setStatus(Zone.ZoneStatus.FULL);
-        }
-        zoneRepository.save(targetZone);
 
         // 7. Cập nhật Session
         session.setEntryZoneGate(zoneGate);
@@ -355,17 +351,13 @@ public class ParkingSessionService {
         // 8. Phát WebSocket cập nhật sức chứa
         broadcastZoneChange(targetZone);
 
-        log.info("CHECK-IN STAGE 2 (Zone Entered): plate={}, session={}, actualZone={}, wrongZone={}, wrongCount={}",
-                session.getLicensePlate(), session.getSessionCode(), targetZone.getZoneCode(), isWrongZone, wrongZoneCount);
+        log.info("CHECK-IN STAGE 2 (Zone Entered): plate={}, session={}, actualZone={}",
+                session.getLicensePlate(), session.getSessionCode(), targetZone.getZoneCode());
 
         SessionResponse response = buildSessionResponse(savedSession, targetZone, null);
-        response.setWrongZoneCount((int) wrongZoneCount);
-        response.setWrongZoneDetected(isWrongZone);
-        if (isWrongZone) {
-            response.setGuideMessage("Cảnh báo: Đi sai Zone gợi ý (" + wrongZoneCount + "/3 lần). Đã tự động cập nhật vị trí sang " + targetZone.getZoneName());
-        } else {
-            response.setGuideMessage("Đã đỗ đúng Zone gợi ý. Barie mở.");
-        }
+        response.setWrongZoneCount(0);
+        response.setWrongZoneDetected(false);
+        response.setGuideMessage("Đã đỗ đúng Zone gợi ý. Barie mở.");
         return response;
     }
 
@@ -926,5 +918,145 @@ public class ParkingSessionService {
         stats.put("todayCheckOut", completedSessionsToday);
 
         return stats;
+    }
+
+    /**
+     * Lấy danh sách phân khu (Zone) khả dụng để thay đổi gợi ý đỗ xe.
+     */
+    public List<EligibleZoneResponse> getEligibleZones(UUID sessionId) {
+        ParkingSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên gửi xe"));
+
+        if (session.getStatus() != SessionStatus.ACTIVE) {
+            throw new BusinessException("Phiên gửi xe không còn hoạt động");
+        }
+
+        if (session.getZoneEntryTime() != null) {
+            throw new BusinessException("Xe đã đi vào khu đỗ, không thể đổi phân khu");
+        }
+
+        // Lấy toàn bộ zone của loại phương tiện này có cổng vào hoạt động
+        List<Zone> allMatchedZones = zoneRepository.findAll().stream()
+                .filter(z -> z.getVehicleType().getId().equals(session.getVehicleType().getId()))
+                .filter(z -> z.getStatus() == Zone.ZoneStatus.ACTIVE || z.getStatus() == Zone.ZoneStatus.FULL)
+                .filter(z -> {
+                    // Kiểm tra xem zone có cổng vào hoạt động không
+                    return gateRepository.findByBuildingId(z.getFloor().getBuilding().getId()).stream()
+                            .anyMatch(g -> g.getZone() != null 
+                                    && g.getZone().getId().equals(z.getId()) 
+                                    && Boolean.TRUE.equals(g.getIsActive()) 
+                                    && (g.getGateType() == Gate.GateType.ZONE_ENTRY || g.getGateType() == Gate.GateType.ZONE_BOTH));
+                })
+                .sorted((z1, z2) -> {
+                    // Sắp xếp ưu tiên:
+                    // 1. Số lượng chỗ trống giảm dần (tức occupied tăng dần)
+                    int occ1 = (z1.getCurrentCount() != null ? z1.getCurrentCount() : 0) + (z1.getReservedCount() != null ? z1.getReservedCount() : 0);
+                    int occ2 = (z2.getCurrentCount() != null ? z2.getCurrentCount() : 0) + (z2.getReservedCount() != null ? z2.getReservedCount() : 0);
+                    if (occ1 != occ2) {
+                        return Integer.compare(occ1, occ2);
+                    }
+                    // 2. Khoảng cách gần nhất
+                    int dist1 = z1.getDistanceToGate() != null ? z1.getDistanceToGate() : Integer.MAX_VALUE;
+                    int dist2 = z2.getDistanceToGate() != null ? z2.getDistanceToGate() : Integer.MAX_VALUE;
+                    return Integer.compare(dist1, dist2);
+                })
+                .collect(Collectors.toList());
+
+        List<EligibleZoneResponse> responseList = new java.util.ArrayList<>();
+        for (int i = 0; i < allMatchedZones.size(); i++) {
+            Zone z = allMatchedZones.get(i);
+            int capacity = z.getCapacity() != null ? z.getCapacity() : 0;
+            int current = z.getCurrentCount() != null ? z.getCurrentCount() : 0;
+            int reserved = z.getReservedCount() != null ? z.getReservedCount() : 0;
+            int occupied = current + reserved;
+            responseList.add(EligibleZoneResponse.builder()
+                    .zoneId(z.getId())
+                    .zoneCode(z.getZoneCode())
+                    .zoneName(z.getZoneName())
+                    .floorName(z.getFloor().getFloorName())
+                    .capacity(capacity)
+                    .currentCount(current)
+                    .reservedCount(reserved)
+                    .priority(i + 1)
+                    .build());
+        }
+
+        return responseList;
+    }
+
+    /**
+     * Thay đổi phân khu đỗ xe chỉ định cho session (Cổng chính - Stage 1.5).
+     */
+    @Transactional
+    public SessionResponse changeSessionZone(UUID sessionId, UUID targetZoneId) {
+        ParkingSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên gửi xe"));
+
+        if (session.getStatus() != SessionStatus.ACTIVE) {
+            throw new BusinessException("Phiên gửi xe không còn hoạt động");
+        }
+
+        if (session.getZoneEntryTime() != null) {
+            throw new BusinessException("Không thể đổi phân khu do xe đã đi vào khu đỗ");
+        }
+
+        Zone oldZone = session.getZone();
+        Zone newZone = zoneRepository.findById(targetZoneId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phân khu mới"));
+
+        if (!newZone.getVehicleType().getId().equals(session.getVehicleType().getId())) {
+            throw new BusinessException("Phân khu mới không phù hợp với loại phương tiện");
+        }
+
+        // Kiểm tra xem Zone mới có cổng vào hoạt động hay không
+        validateZoneHasEntryGate(newZone);
+
+        // Kiểm tra sức chứa của Zone mới
+        int occupied = (newZone.getCurrentCount() != null ? newZone.getCurrentCount() : 0) + (newZone.getReservedCount() != null ? newZone.getReservedCount() : 0);
+        if (newZone.getStatus() == Zone.ZoneStatus.FULL || occupied >= newZone.getCapacity()) {
+            throw new BusinessException("Khu vực đỗ xe mới đã đầy chỗ");
+        }
+
+        // Cập nhật số đếm ở Zone cũ (trừ 1 ở currentCount)
+        if (oldZone.getCurrentCount() != null && oldZone.getCurrentCount() > 0) {
+            oldZone.setCurrentCount(oldZone.getCurrentCount() - 1);
+        }
+        int oldOccupied = (oldZone.getCurrentCount() != null ? oldZone.getCurrentCount() : 0) + (oldZone.getReservedCount() != null ? oldZone.getReservedCount() : 0);
+        if (oldZone.getStatus() == Zone.ZoneStatus.FULL && oldOccupied < oldZone.getCapacity()) {
+            oldZone.setStatus(Zone.ZoneStatus.ACTIVE);
+        }
+        zoneRepository.save(oldZone);
+
+        // Cập nhật số đếm ở Zone mới (cộng 1 ở currentCount)
+        newZone.setCurrentCount((newZone.getCurrentCount() != null ? newZone.getCurrentCount() : 0) + 1);
+        int newOccupied = (newZone.getCurrentCount() != null ? newZone.getCurrentCount() : 0) + (newZone.getReservedCount() != null ? newZone.getReservedCount() : 0);
+        if (newOccupied >= newZone.getCapacity()) {
+            newZone.setStatus(Zone.ZoneStatus.FULL);
+        }
+        zoneRepository.save(newZone);
+
+        // Cập nhật session sang Zone mới
+        session.setZone(newZone);
+        ParkingSession savedSession = sessionRepository.save(session);
+
+        // Phát WebSocket cập nhật sức chứa cho cả 2 zone
+        broadcastZoneChange(oldZone);
+        broadcastZoneChange(newZone);
+
+        log.info("CHANGE ZONE: plate={}, sessionCode={}, oldZone={}, newZone={}",
+                session.getLicensePlate(), session.getSessionCode(), oldZone.getZoneCode(), newZone.getZoneCode());
+
+        return buildSessionResponse(savedSession, newZone, null);
+    }
+
+    private void validateZoneHasEntryGate(Zone zone) {
+        boolean hasActiveGate = gateRepository.findByBuildingId(zone.getFloor().getBuilding().getId()).stream()
+                .anyMatch(g -> g.getZone() != null 
+                        && g.getZone().getId().equals(zone.getId()) 
+                        && Boolean.TRUE.equals(g.getIsActive()) 
+                        && (g.getGateType() == Gate.GateType.ZONE_ENTRY || g.getGateType() == Gate.GateType.ZONE_BOTH));
+        if (!hasActiveGate) {
+            throw new BusinessException("Khu vực đỗ xe " + zone.getZoneName() + " hiện tại không thể tiếp nhận xe do chưa được cấu hình cổng vào hoạt động.");
+        }
     }
 }

@@ -51,21 +51,21 @@ public class DataInitializer implements CommandLineRunner {
         // Cấu trúc hàm: getOrCreateFloor(building, floorNumber (số tầng, âm là hầm), floorName (tên tầng), mainVehicleType, totalSlots (tổng sức chứa tầng))
         Floor b2 = getOrCreateFloor(building, -2, "B2", xeMay, 120 /* Tổng sức chứa */);
         Zone b2a = getOrCreateZone(b2, "A", "Khu A - Xe máy", xeMay, 50 /* Sức chứa */, 20 /* Khoảng cách (m) */);
-        getOrCreateZone(b2, "B", "Khu B - Xe máy", xeMay, 40 /* Sức chứa */, 40 /* Khoảng cách (m) */);
-        getOrCreateZone(b2, "C", "Khu C - Xe đạp", xeDap, 30 /* Sức chứa */, 15 /* Khoảng cách (m) */);
+        Zone b2b = getOrCreateZone(b2, "B", "Khu B - Xe máy", xeMay, 40 /* Sức chứa */, 40 /* Khoảng cách (m) */);
+        Zone b2c = getOrCreateZone(b2, "C", "Khu C - Xe đạp", xeDap, 30 /* Sức chứa */, 15 /* Khoảng cách (m) */);
 
         Floor b1 = getOrCreateFloor(building, -1, "B1", xeMay, 140 /* Tổng sức chứa */);
         Zone b1a = getOrCreateZone(b1, "A", "Khu A - Xe máy", xeMay, 60 /* Sức chứa */, 15 /* Khoảng cách (m) */);
-        getOrCreateZone(b1, "B", "Khu B - Xe máy", xeMay, 50 /* Sức chứa */, 35 /* Khoảng cách (m) */);
-        getOrCreateZone(b1, "C", "Khu C - Xe đạp", xeDap, 30 /* Sức chứa */, 10 /* Khoảng cách (m) */);
+        Zone b1b = getOrCreateZone(b1, "B", "Khu B - Xe máy", xeMay, 50 /* Sức chứa */, 35 /* Khoảng cách (m) */);
+        Zone b1c = getOrCreateZone(b1, "C", "Khu C - Xe đạp", xeDap, 30 /* Sức chứa */, 10 /* Khoảng cách (m) */);
 
         Floor t1 = getOrCreateFloor(building, 1, "T1", oTo, 80 /* Tổng sức chứa */);
         Zone t1a = getOrCreateZone(t1, "A", "Khu A - Ô tô", oTo, 40 /* Sức chứa */, 25 /* Khoảng cách (m) */);
-        getOrCreateZone(t1, "B", "Khu B - Ô tô", oTo, 40 /* Sức chứa */, 45 /* Khoảng cách (m) */);
+        Zone t1b = getOrCreateZone(t1, "B", "Khu B - Ô tô", oTo, 40 /* Sức chứa */, 45 /* Khoảng cách (m) */);
 
         Floor t2 = getOrCreateFloor(building, 2, "T2", xeTai, 40 /* Tổng sức chứa */);
         Zone t2a = getOrCreateZone(t2, "A", "Khu A - Xe tải", xeTai, 20 /* Sức chứa */, 30 /* Khoảng cách (m) */);
-        getOrCreateZone(t2, "B", "Khu B - Xe tải", xeTai, 20 /* Sức chứa */, 50 /* Khoảng cách (m) */);
+        Zone t2b = getOrCreateZone(t2, "B", "Khu B - Xe tải", xeTai, 20 /* Sức chứa */, 50 /* Khoảng cách (m) */);
 
         // Cấu trúc hàm: getOrCreateGate(building, gateCode (mã cổng), gateName (tên cổng), gateType, zone (nếu có))
         getOrCreateGate(building, "MAIN-IN", "Cổng chính - Lối vào", Gate.GateType.MAIN_ENTRY);
@@ -74,6 +74,21 @@ public class DataInitializer implements CommandLineRunner {
         getOrCreateGate(building, "ZONE-B2", "Cổng tầng B2", Gate.GateType.ZONE_BOTH, b2a);
         getOrCreateGate(building, "ZONE-T1", "Cổng tầng T1", Gate.GateType.ZONE_BOTH, t1a);
         getOrCreateGate(building, "ZONE-T2", "Cổng tầng T2", Gate.GateType.ZONE_BOTH, t2a);
+
+        // Tạo các cổng zone phụ liên kết trực tiếp với Zone
+        getOrCreateZoneGate(building, "GATE-ZONE-B2-A", "Cổng Zone B2-A (Xe máy)", Gate.GateType.ZONE_ENTRY, b2a);
+        getOrCreateZoneGate(building, "GATE-ZONE-B2-B", "Cổng Zone B2-B (Xe máy)", Gate.GateType.ZONE_ENTRY, b2b);
+        getOrCreateZoneGate(building, "GATE-ZONE-B2-C", "Cổng Zone B2-C (Xe đạp)", Gate.GateType.ZONE_ENTRY, b2c);
+
+        getOrCreateZoneGate(building, "GATE-ZONE-B1-A", "Cổng Zone B1-A (Xe máy)", Gate.GateType.ZONE_ENTRY, b1a);
+        getOrCreateZoneGate(building, "GATE-ZONE-B1-B", "Cổng Zone B1-B (Xe máy)", Gate.GateType.ZONE_ENTRY, b1b);
+        getOrCreateZoneGate(building, "GATE-ZONE-B1-C", "Cổng Zone B1-C (Xe đạp)", Gate.GateType.ZONE_ENTRY, b1c);
+
+        getOrCreateZoneGate(building, "GATE-ZONE-T1-A", "Cổng Zone T1-A (Ô tô)", Gate.GateType.ZONE_ENTRY, t1a);
+        getOrCreateZoneGate(building, "GATE-ZONE-T1-B", "Cổng Zone T1-B (Ô tô)", Gate.GateType.ZONE_ENTRY, t1b);
+
+        getOrCreateZoneGate(building, "GATE-ZONE-T2-A", "Cổng Zone T2-A (Xe tải)", Gate.GateType.ZONE_ENTRY, t2a);
+        getOrCreateZoneGate(building, "GATE-ZONE-T2-B", "Cổng Zone T2-B (Xe tải)", Gate.GateType.ZONE_ENTRY, t2b);
 
         // Cấu trúc hàm: seedPricing(building, vehicleType, hourlyPrice (phí theo giờ), dailyPrice (phí ngày), monthlyPrice (phí tháng), hourlyFreeMinutes (phút miễn phí))
         seedPricing(building, xeDap, "2000" /* Phí giờ */, "10000" /* Phí ngày */, "100000" /* Phí tháng */, 30 /* Phút miễn phí */);
@@ -185,6 +200,37 @@ public class DataInitializer implements CommandLineRunner {
                         .zone(zone)
                         .isActive(true)
                         .build()));
+    }
+
+    private Gate getOrCreateZoneGate(Building building, String gateCode, String gateName, Gate.GateType gateType, Zone zone) {
+        Gate gate = gateRepository.findByBuildingId(building.getId()).stream()
+                .filter(g -> gateCode.equalsIgnoreCase(g.getGateCode()))
+                .findFirst()
+                .orElse(null);
+        if (gate == null) {
+            return gateRepository.save(Gate.builder()
+                    .building(building)
+                    .gateCode(gateCode)
+                    .gateName(gateName)
+                    .gateType(gateType)
+                    .zone(zone)
+                    .isActive(true)
+                    .build());
+        } else {
+            boolean updated = false;
+            if (gate.getZone() == null && zone != null) {
+                gate.setZone(zone);
+                updated = true;
+            }
+            if (gate.getGateType() != gateType) {
+                gate.setGateType(gateType);
+                updated = true;
+            }
+            if (updated) {
+                return gateRepository.save(gate);
+            }
+        }
+        return gate;
     }
 
     private void seedPricing(Building building, VehicleType vehicleType, String hourly, String daily, String monthly, int hourlyFreeMinutes) {

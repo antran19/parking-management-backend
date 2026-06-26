@@ -807,8 +807,21 @@ public class ParkingSessionService {
      * Lấy lịch sử gửi xe theo biển số — dùng cho Driver xem history.
      */
     public List<SessionResponse> getSessionHistory(String licensePlate) {
-        List<ParkingSession> sessions = sessionRepository
-                .findByLicensePlateOrderByEntryTimeDesc(licensePlate);
+        String normalizedInput = LicensePlateUtil.normalize(licensePlate);
+
+        List<ParkingSession> sessions = sessionRepository.findAll().stream()
+                .filter(session -> LicensePlateUtil.normalize(session.getLicensePlate()).equals(normalizedInput))
+                .sorted((a, b) -> {
+                    LocalDateTime at = a.getEntryTime();
+                    LocalDateTime bt = b.getEntryTime();
+
+                    if (at == null && bt == null) return 0;
+                    if (at == null) return 1;
+                    if (bt == null) return -1;
+
+                    return bt.compareTo(at);
+                })
+                .toList();
 
         return sessions.stream().map(session -> {
             Zone zone = session.getZone();

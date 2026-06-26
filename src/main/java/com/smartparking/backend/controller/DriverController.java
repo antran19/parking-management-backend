@@ -2,8 +2,6 @@ package com.smartparking.backend.controller;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -165,6 +163,9 @@ public class DriverController {
 
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
              .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy loại xe"));
+        if (isBicycleVehicleType(vehicleType)) {
+            throw new BusinessException("Xe đạp không cần đăng ký biển số. Hệ thống sẽ tự sinh mã 4 số khi đặt chỗ.");
+        }
 
         validatePlateFormatMatchesVehicleType(licensePlate, vehicleType);
 
@@ -593,7 +594,9 @@ public class DriverController {
         }
 
         if (passType == ParkingPass.PassType.YEARLY) {
-            return monthlyPrice.multiply(BigDecimal.valueOf(12)).multiply(BigDecimal.valueOf(0.9));
+            return monthlyPrice
+                .multiply(BigDecimal.valueOf(12))
+                .multiply(new BigDecimal("0.9"));
         }
 
         return monthlyPrice;
@@ -644,6 +647,12 @@ public class DriverController {
                     + vehicleType.getName());
         }
     }
+    //helpers for vehicle type validation
+    private boolean isBicycleVehicleType(VehicleType vehicleType) {
+        return vehicleType != null
+                && vehicleType.getName() != null
+                && normalizeVietnameseText(vehicleType.getName()).contains("XE DAP");
+    }
 
     private void validatePlateFormatMatchesVehicleType(String licensePlate, VehicleType vehicleType) {
         if (vehicleType == null || vehicleType.getName() == null) {
@@ -653,8 +662,7 @@ public class DriverController {
         String vehicleTypeName = normalizeVietnameseText(vehicleType.getName());
 
         if (vehicleTypeName.contains("XE DAP")) {
-            validateStandardPlate(licensePlate, "xe đạp");
-            return;
+            throw new BusinessException("Xe đạp không cần đăng ký biển số");
         }
 
         if (vehicleTypeName.contains("XE MAY")) {

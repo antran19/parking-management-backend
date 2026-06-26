@@ -5,7 +5,6 @@ import com.smartparking.backend.dto.request.ReservationRequest;
 import com.smartparking.backend.dto.response.ReservationResponse;
 import com.smartparking.backend.entity.Reservation;
 import com.smartparking.backend.entity.User;
-import com.smartparking.backend.entity.UserLicensePlate;
 import com.smartparking.backend.entity.VehicleType;
 import com.smartparking.backend.entity.Zone;
 import com.smartparking.backend.exception.BusinessException;
@@ -17,7 +16,11 @@ import com.smartparking.backend.repository.ZoneRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.smartparking.backend.util.LicensePlateUtil;
+import com.smartparking.backend.entity.ParkingSession;
+import com.smartparking.backend.repository.ParkingSessionRepository;
 
+import java.util.concurrent.ThreadLocalRandom;
+import java.sql.Driver;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -47,15 +50,18 @@ public class ReservationService {
     private final UserLicensePlateRepository userLicensePlateRepository;
     private final BlacklistService blacklistService;
     private final EmergencyService emergencyService;
+    private final ParkingSessionRepository parkingSessionRepository;
 
     public ReservationService(
             ReservationRepository reservationRepository,
+            ParkingSessionRepository parkingSessionRepository,
             ZoneRepository zoneRepository,
             VehicleTypeRepository vehicleTypeRepository,
             UserLicensePlateRepository userLicensePlateRepository,
             BlacklistService blacklistService,
             EmergencyService emergencyService) {
         this.reservationRepository = reservationRepository;
+        this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
         this.vehicleTypeRepository = vehicleTypeRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
@@ -84,8 +90,19 @@ public class ReservationService {
 
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy loại xe"));
+        // Nếu không phải xe đạp:
+        // - Bắt nhập biển số.
+        // - Check biển số thuộc Driver.
+        // - Check loại xe của biển số.
 
-        String licensePlate = normalizePlate(request.getLicensePlate());
+        // Nếu là xe đạp:
+        // - Không bắt nhập biển số.
+        // - Không check trong hồ sơ user_license_plates.
+        // - Tự sinh mã 4 số.
+        boolean bicycleReservation = isBicycleVehicleType(vehicleType);
+        String licensePlate = bicycleReservation
+                ? resolveBicycleIdentifier(request.getLicensePlate())
+                : normalizePlate(request.getLicensePlate());
 
         /*
          * Quảng - Driver scope:
@@ -94,8 +111,11 @@ public class ReservationService {
         emergencyService.ensureNormalOperation();
         blacklistService.ensurePlateNotBlacklisted(licensePlate);
 
-        UserLicensePlate userPlate = validatePlateBelongsToUser(user, licensePlate);
-        validatePlateVehicleTypeMatches(userPlate, vehicleType);
+        if (!bicycleReservation) {
+            UserLicensePlate userPlate = validatePlateBelongsToUser(user, licensePlate);
+            validatePlateVehicleTypeMatches(userPlate, vehicleType);
+        }
+
         validateZoneMatchesVehicleType(zone, vehicleType);
         validateZoneHasAvailableSlot(zone);
         validatePlateHasNoActiveReservation(user, licensePlate);
@@ -304,9 +324,78 @@ public class ReservationService {
             throw new BusinessException("Không thể đặt chỗ trong quá khứ");
         }
 
+        if (reservedFrom.isAfter(now.plusHours(2))) {
+            throw new BusinessException("Chỉ có thể giữ chỗ trong vòng 2 giờ tới");
+        }
+
         if (reservedTo.isAfter(reservedFrom.plusHours(2))) {
             throw new BusinessException("Thời gian giữ chỗ tối đa là 2 giờ");
         }
+    }
+
+    /**
+     * Xe đạp không dùng biển số thật.
+     * Hệ thống chỉ dùng mã 4 số để định danh reservation/check-in.
+     */
+    private boolean isBicycleVehicleType(VehicleType vehicleType) {
+        if (vehicleType == null || vehicleType.getName() == null) {
+            return false;
+        }
+
+        return normalizeVietnameseText(vehicleType.getName()).contains("XE DAP");
+    }
+
+    private String resolveBicycleIdentifier(String input) {
+        String normalized = LicensePlateUtil.normalize(input);
+
+        if (normalized.isBlank()) {
+            return generateAvailableBicycleIdentifier();
+        }
+
+        if (!normalized.matches("^[0-9]{4}$")) {
+            throw new BusinessException("Mã xe đạp phải gồm đúng 4 số");
+        }
+
+        if (!isBicycleIdentifierAvailable(normalized)) {
+            throw new BusinessException("Mã xe đạp đang được sử dụng, vui lòng tạo lại đặt chỗ");
+        }
+
+        return normalized;
+    }
+
+    private String generateAvailableBicycleIdentifier() {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            String candidate = String.valueOf(ThreadLocalRandom.current().nextInt(1000, 10000));
+
+            if (isBicycleIdentifierAvailable(candidate)) {
+                return candidate;
+            }
+        }
+
+        throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
+    }
+
+    private boolean isBicycleIdentifierAvailable(String identifier) {
+        boolean hasActiveReservation = !reservationRepository.findByLicensePlateAndStatusIn(
+                identifier,
+                List.of(Reservation.ReservationStatus.PENDING, Reservation.ReservationStatus.CONFIRMED)
+        ).isEmpty();
+
+        boolean hasActiveSession = parkingSessionRepository
+                .findByLicensePlateAndStatus(identifier, ParkingSession.SessionStatus.ACTIVE)
+                .isPresent();
+
+        return !hasActiveReservation && !hasActiveSession;
+    }
+
+    private String normalizeVietnameseText(String value) {
+        String normalized = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD);
+        return normalized
+                .replaceAll("\\p{M}", "")
+                .replace("Đ", "D")
+                .replace("đ", "d")
+                .toUpperCase()
+                .trim();
     }
 
     /**

@@ -18,7 +18,8 @@ import java.util.stream.Collectors;
  * ParkingConfigController — API cấu hình bãi xe (Toàn phụ trách)
  *
  * Đã implement:
- * - GET /parking/config           → Trả về toàn bộ config (vehicleTypes, buildings, floors, gates, zones, pricingRules)
+ * - GET /parking/config → Trả về toàn bộ config (vehicleTypes, buildings,
+ * floors, gates, zones, pricingRules)
  * - PUT /parking/zones/{id}/status → Cập nhật trạng thái zone
  */
 
@@ -35,11 +36,11 @@ public class ParkingConfigController {
     private final PricingRuleRepository pricingRuleRepository;
 
     public ParkingConfigController(VehicleTypeRepository vehicleTypeRepository,
-                                   GateRepository gateRepository,
-                                   ZoneRepository zoneRepository,
-                                   BuildingRepository buildingRepository,
-                                   FloorRepository floorRepository,
-                                   PricingRuleRepository pricingRuleRepository) {
+            GateRepository gateRepository,
+            ZoneRepository zoneRepository,
+            BuildingRepository buildingRepository,
+            FloorRepository floorRepository,
+            PricingRuleRepository pricingRuleRepository) {
         this.vehicleTypeRepository = vehicleTypeRepository;
         this.gateRepository = gateRepository;
         this.zoneRepository = zoneRepository;
@@ -148,9 +149,10 @@ public class ParkingConfigController {
 
     @PutMapping("/zones/{id}/status")
     @Transactional
-    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
     @Operation(summary = "Update zone status (ACTIVE/MAINTENANCE/CLOSED)")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateZoneStatus(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateZoneStatus(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         Zone zone = zoneRepository.findById(id).orElseThrow(() -> new NoSuchElementException("Zone không tồn tại"));
         String status = String.valueOf(body.getOrDefault("status", "ACTIVE")).toUpperCase();
         zone.setStatus(Zone.ZoneStatus.valueOf(status));

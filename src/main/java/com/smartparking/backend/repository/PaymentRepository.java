@@ -11,11 +11,13 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     List<Payment> findByReferenceTypeAndReferenceId(String referenceType, UUID referenceId);
+    Optional<Payment> findByTransactionId(String transactionId);
 
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = :status AND p.paidAt BETWEEN :from AND :to")
     BigDecimal sumAmountByStatusAndPaidAtBetween(

@@ -59,6 +59,7 @@ public class SecurityConfig {
             "/api/v1/auth/**",           // Đăng nhập, đăng ký, refresh token
             "/api/v1/public/**",         // Thông tin bãi xe công khai (nếu cần)
             "/api/v1/emergency/status",  // Trạng thái SOS cho mọi dashboard
+            "/api/v1/driver/payments/vnpay-return", // VNPay browser redirect callback
             "/api/v1/driver/payments/vnpay-ipn", // VNPay server-to-server callback
             "/ws/**",                    // WebSocket STOMP endpoint
             "/actuator/health",          // Health check cho DevOps

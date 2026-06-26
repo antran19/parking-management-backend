@@ -521,7 +521,16 @@ public class ParkingSessionService {
 
         LocalDateTime exitTime = LocalDateTime.now();
         int durationMinutes = calculateDurationMinutes(session, exitTime);
-        BigDecimal totalFee = calculateSessionFee(session, durationMinutes);
+        BigDecimal calculatedFee = calculateSessionFee(session, durationMinutes);
+
+        // Nếu phí = 0 (trong khoảng miễn phí) → không cần thanh toán online, checkout tại quầy
+        if (calculatedFee.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException(
+                    "Phí gửi xe = 0đ (trong thời gian miễn phí). Vui lòng check-out trực tiếp tại quầy.");
+        }
+
+        final BigDecimal totalFee = calculatedFee;
+
         String orderCode = "SESSION-" + session.getId().toString().replace("-", "").substring(0, 16).toUpperCase();
 
         Payment payment = paymentRepository.findByReferenceTypeAndReferenceId("SESSION", session.getId()).stream()

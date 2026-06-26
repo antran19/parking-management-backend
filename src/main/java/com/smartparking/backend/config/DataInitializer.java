@@ -47,36 +47,41 @@ public class DataInitializer implements CommandLineRunner {
 
         Building building = getOrCreateBuilding("SmartParking Tower", "123 Nguyễn Văn Linh, Quận 7, TP.HCM");
 
-        Floor b2 = getOrCreateFloor(building, -2, "B2", xeMay, 120);
-        getOrCreateZone(b2, "A", "Khu A - Xe máy", xeMay, 50, 20);
-        getOrCreateZone(b2, "B", "Khu B - Xe máy", xeMay, 40, 40);
-        getOrCreateZone(b2, "C", "Khu C - Xe đạp", xeDap, 30, 15);
+        // Cấu trúc hàm: getOrCreateZone(floor, zoneCode, zoneName, vehicleType, capacity (sức chứa), distanceToGate (khoảng cách tới cổng - mét))
+        // Cấu trúc hàm: getOrCreateFloor(building, floorNumber (số tầng, âm là hầm), floorName (tên tầng), mainVehicleType, totalSlots (tổng sức chứa tầng))
+        Floor b2 = getOrCreateFloor(building, -2, "B2", xeMay, 120 /* Tổng sức chứa */);
+        Zone b2a = getOrCreateZone(b2, "A", "Khu A - Xe máy", xeMay, 50 /* Sức chứa */, 20 /* Khoảng cách (m) */);
+        getOrCreateZone(b2, "B", "Khu B - Xe máy", xeMay, 40 /* Sức chứa */, 40 /* Khoảng cách (m) */);
+        getOrCreateZone(b2, "C", "Khu C - Xe đạp", xeDap, 30 /* Sức chứa */, 15 /* Khoảng cách (m) */);
 
-        Floor b1 = getOrCreateFloor(building, -1, "B1", xeMay, 140);
-        getOrCreateZone(b1, "A", "Khu A - Xe máy", xeMay, 60, 15);
-        getOrCreateZone(b1, "B", "Khu B - Xe máy", xeMay, 50, 35);
-        getOrCreateZone(b1, "C", "Khu C - Xe đạp", xeDap, 30, 10);
+        Floor b1 = getOrCreateFloor(building, -1, "B1", xeMay, 140 /* Tổng sức chứa */);
+        Zone b1a = getOrCreateZone(b1, "A", "Khu A - Xe máy", xeMay, 60 /* Sức chứa */, 15 /* Khoảng cách (m) */);
+        getOrCreateZone(b1, "B", "Khu B - Xe máy", xeMay, 50 /* Sức chứa */, 35 /* Khoảng cách (m) */);
+        getOrCreateZone(b1, "C", "Khu C - Xe đạp", xeDap, 30 /* Sức chứa */, 10 /* Khoảng cách (m) */);
 
-        Floor t1 = getOrCreateFloor(building, 1, "T1", oTo, 80);
-        getOrCreateZone(t1, "A", "Khu A - Ô tô", oTo, 40, 25);
-        getOrCreateZone(t1, "B", "Khu B - Ô tô", oTo, 40, 45);
+        Floor t1 = getOrCreateFloor(building, 1, "T1", oTo, 80 /* Tổng sức chứa */);
+        Zone t1a = getOrCreateZone(t1, "A", "Khu A - Ô tô", oTo, 40 /* Sức chứa */, 25 /* Khoảng cách (m) */);
+        getOrCreateZone(t1, "B", "Khu B - Ô tô", oTo, 40 /* Sức chứa */, 45 /* Khoảng cách (m) */);
 
-        Floor t2 = getOrCreateFloor(building, 2, "T2", xeTai, 40);
-        getOrCreateZone(t2, "A", "Khu A - Xe tải", xeTai, 20, 30);
-        getOrCreateZone(t2, "B", "Khu B - Xe tải", xeTai, 20, 50);
+        Floor t2 = getOrCreateFloor(building, 2, "T2", xeTai, 40 /* Tổng sức chứa */);
+        Zone t2a = getOrCreateZone(t2, "A", "Khu A - Xe tải", xeTai, 20 /* Sức chứa */, 30 /* Khoảng cách (m) */);
+        getOrCreateZone(t2, "B", "Khu B - Xe tải", xeTai, 20 /* Sức chứa */, 50 /* Khoảng cách (m) */);
 
+        // Cấu trúc hàm: getOrCreateGate(building, gateCode (mã cổng), gateName (tên cổng), gateType, zone (nếu có))
         getOrCreateGate(building, "MAIN-IN", "Cổng chính - Lối vào", Gate.GateType.MAIN_ENTRY);
         getOrCreateGate(building, "MAIN-OUT", "Cổng chính - Lối ra", Gate.GateType.MAIN_EXIT);
-        getOrCreateGate(building, "ZONE-B1", "Cổng tầng B1", Gate.GateType.ZONE_BOTH);
-        getOrCreateGate(building, "ZONE-B2", "Cổng tầng B2", Gate.GateType.ZONE_BOTH);
-        getOrCreateGate(building, "ZONE-T1", "Cổng tầng T1", Gate.GateType.ZONE_BOTH);
-        getOrCreateGate(building, "ZONE-T2", "Cổng tầng T2", Gate.GateType.ZONE_BOTH);
+        getOrCreateGate(building, "ZONE-B1", "Cổng tầng B1", Gate.GateType.ZONE_BOTH, b1a);
+        getOrCreateGate(building, "ZONE-B2", "Cổng tầng B2", Gate.GateType.ZONE_BOTH, b2a);
+        getOrCreateGate(building, "ZONE-T1", "Cổng tầng T1", Gate.GateType.ZONE_BOTH, t1a);
+        getOrCreateGate(building, "ZONE-T2", "Cổng tầng T2", Gate.GateType.ZONE_BOTH, t2a);
 
-        seedPricing(building, xeDap, "2000", "10000", "100000", 30);
-        seedPricing(building, xeMay, "5000", "25000", "200000", 15);
-        seedPricing(building, oTo, "15000", "80000", "1500000", 15);
-        seedPricing(building, xeTai, "25000", "120000", "2500000", 15);
+        // Cấu trúc hàm: seedPricing(building, vehicleType, hourlyPrice (phí theo giờ), dailyPrice (phí ngày), monthlyPrice (phí tháng), hourlyFreeMinutes (phút miễn phí))
+        seedPricing(building, xeDap, "2000" /* Phí giờ */, "10000" /* Phí ngày */, "100000" /* Phí tháng */, 30 /* Phút miễn phí */);
+        seedPricing(building, xeMay, "5000" /* Phí giờ */, "25000" /* Phí ngày */, "200000" /* Phí tháng */, 15 /* Phút miễn phí */);
+        seedPricing(building, oTo, "15000" /* Phí giờ */, "80000" /* Phí ngày */, "1500000" /* Phí tháng */, 15 /* Phút miễn phí */);
+        seedPricing(building, xeTai, "25000" /* Phí giờ */, "120000" /* Phí ngày */, "2500000" /* Phí tháng */, 15 /* Phút miễn phí */);
 
+        // Cấu trúc hàm: getOrCreateUser(email, fullName, phone, role)
         User admin = getOrCreateUser("admin@parking.vn", "Admin Hệ Thống", "0901000001", User.Role.ADMIN);
         User manager = getOrCreateUser("manager@parking.vn", "Nguyễn Văn Quản Lý", "0901000002", User.Role.MANAGER);
         User staff = getOrCreateUser("staff@parking.vn", "Trần Thị Nhân Viên", "0901000003", User.Role.STAFF);
@@ -157,14 +162,27 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private Gate getOrCreateGate(Building building, String gateCode, String gateName, Gate.GateType gateType) {
+        return getOrCreateGate(building, gateCode, gateName, gateType, null);
+    }
+
+    private Gate getOrCreateGate(Building building, String gateCode, String gateName, Gate.GateType gateType, Zone zone) {
         return gateRepository.findByBuildingId(building.getId()).stream()
                 .filter(g -> gateCode.equalsIgnoreCase(g.getGateCode()))
                 .findFirst()
+                .map(g -> {
+                    // Cập nhật zone nếu cổng đã tồn tại nhưng chưa gán zone
+                    if (zone != null && g.getZone() == null) {
+                        g.setZone(zone);
+                        return gateRepository.save(g);
+                    }
+                    return g;
+                })
                 .orElseGet(() -> gateRepository.save(Gate.builder()
                         .building(building)
                         .gateCode(gateCode)
                         .gateName(gateName)
                         .gateType(gateType)
+                        .zone(zone)
                         .isActive(true)
                         .build()));
     }

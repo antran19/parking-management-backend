@@ -2,9 +2,11 @@ package com.smartparking.backend.controller;
 
 import com.smartparking.backend.dto.response.*;
 import com.smartparking.backend.exception.ResourceNotFoundException;
-import com.smartparking.backend.service.ManagerService;
+import com.smartparking.backend.dto.response.BlacklistPlateResponse;
+import com.smartparking.backend.service.BlacklistService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import com.smartparking.backend.service.ManagerService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,11 +24,12 @@ import com.smartparking.backend.entity.Gate;
 @RestController
 @Tag(name = "Manager", description = "Manager APIs")
 @RequestMapping("/api/v1/manager")
-@PreAuthorize("hasAnyRole('MANAGER')")
 @RequiredArgsConstructor
+
 public class ManagerController {
 
     private final ManagerService managerService;
+    private final BlacklistService blacklistService;
 
     /*
      * =============================================================================
@@ -115,27 +118,10 @@ public class ManagerController {
         return ResponseEntity.ok(ApiResponse.success(managerService.getSecuritySummary(from, to)));
     }
 
-    /*
-     * =============================================================================
-     * ================================
-     * CRUD ZONE
-     * =============================================================================
-     * ================================
-     */
-    @PostMapping("/zones")
-    public ResponseEntity<ApiResponse<Zone>> createZone(@RequestBody Map<String, Object> body) {
-        return ResponseEntity.ok(ApiResponse.success("Đã tạo zone", managerService.createZone(body)));
-    }
-
-    @PutMapping("/zones/{id}")
-    public ResponseEntity<ApiResponse<Zone>> updateZone(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
-        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật zone", managerService.updateZone(id, body)));
-    }
-
-    @DeleteMapping("/zones/{id}")
-    public ResponseEntity<ApiResponse<String>> deleteZone(@PathVariable UUID id) {
-        managerService.deleteZone(id);
-        return ResponseEntity.ok(ApiResponse.success("Đã xóa zone", id.toString()));
+    @GetMapping("/blacklist")
+    public ResponseEntity<ApiResponse<List<BlacklistPlateResponse>>> getBlacklistPlate() {
+        List<BlacklistPlateResponse> list = blacklistService.getAllBlacklist();
+        return ResponseEntity.ok(ApiResponse.success(list));
     }
 
     /*
@@ -185,4 +171,5 @@ public class ManagerController {
         managerService.deleteGate(id);
         return ResponseEntity.ok(ApiResponse.success("Đã xóa cổng", id.toString()));
     }
+
 }

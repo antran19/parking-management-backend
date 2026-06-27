@@ -156,12 +156,28 @@ public class ManagerService {
                 start,
                 end);
 
+        java.util.List<com.smartparking.backend.repository.projection.ChartDataProjection> projections;
+        if ("today".equalsIgnoreCase(type)) {
+            projections = paymentRepository.sumRevenueGroupedByHour(start, end);
+        } else if ("month".equalsIgnoreCase(type)) {
+            projections = paymentRepository.sumRevenueGroupedByDay(start, end);
+        } else if ("year".equalsIgnoreCase(type)) {
+            projections = paymentRepository.sumRevenueGroupedByMonth(start, end);
+        } else {
+            projections = paymentRepository.sumRevenueGroupedByDay(start, end);
+        }
+
+        java.util.List<com.smartparking.backend.dto.response.ChartDataPoint> chartData = projections.stream()
+                .map(p -> new com.smartparking.backend.dto.response.ChartDataPoint(p.getLabel(), p.getValue()))
+                .collect(java.util.stream.Collectors.toList());
+
         return RevenueResponse.builder()
                 .from(start)
                 .to(end)
                 .totalRevenue(revenue == null ? BigDecimal.ZERO : revenue)
                 .totalSessions(totalSessions)
                 .currency("VND")
+                .chartData(chartData)
                 .build();
     }
 
@@ -361,49 +377,6 @@ public class ManagerService {
                 .forEach(type -> byType.put(type.name(), byType.get(type.name()) + 1));
 
         return byType;
-    }
-    /*
-     * =============================================================================
-     * ================================
-     * CRUD ZONE
-     * =============================================================================
-     * ================================
-     */
-
-    @Transactional
-    public Zone createZone(Map<String, Object> body) {
-        Floor floor = floorRepository.findById(uuid(body, "floorId"))
-                .orElseThrow(() -> new ResourceNotFoundException("Floor không tồn tại"));
-
-        VehicleType vehicleType = vehicleTypeRepository.findById(uuid(body, "vehicleTypeId"))
-                .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại"));
-
-        Zone zone = Zone.builder()
-                .floor(floor)
-                .vehicleType(vehicleType)
-                .zoneCode(text(body, "zoneCode"))
-                .zoneName(text(body, "zoneName"))
-                .capacity(number(body, "capacity", 0))
-                .currentCount(0)
-                .reservedCount(0)
-                .status(Zone.ZoneStatus.ACTIVE)
-                .build();
-
-        return zoneRepository.save(zone);
-    }
-
-    public Zone updateZone(UUID id, Map<String, Object> body) {
-        Zone zone = zoneRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Zone không tồn tại"));
-
-        if (body.containsKey("zoneName"))
-            zone.setZoneName(text(body, "zoneName"));
-        if (body.containsKey("capacity"))
-            zone.setCapacity(number(body, "capacity", zone.getCapacity()));
-        if (body.containsKey("status"))
-            zone.setStatus(Zone.ZoneStatus.valueOf(text(body, "status").toUpperCase()));
-
-        return zoneRepository.save(zone);
     }
 
     /*

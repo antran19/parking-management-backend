@@ -14,9 +14,8 @@ import java.util.UUID;
 @Data
 public class CheckInRequest {
 
-    @NotBlank(message = "Biển số xe không được để trống")
-    @Pattern(regexp = "^\\s*\\d{2}[A-Za-z]{1,2}\\d?[- ]?\\d{3,5}(\\.\\d{2})?\\s*$", message = "Biển số không đúng định dạng. Ví dụ: 51F-123.45, 30A-12345 hoặc 59X1-12345")
-    private String licensePlate; // "51A-12345"
+    // Validated in service layer to support bicycle empty plates
+    private String licensePlate; // "51A-12345" hoặc rỗng nếu là xe đạp
 
     @NotNull(message = "Loại phương tiện không được để trống")
     private UUID vehicleTypeId;
@@ -33,6 +32,4 @@ public class CheckInRequest {
     // Optional: ghi chú đặc biệt
     private String notes;
 
-    private String entryPlateImageUrl;
-    private String entryFaceImageUrl;
 }

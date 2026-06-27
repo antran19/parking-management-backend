@@ -57,4 +57,6 @@ public class SessionResponse {
 
     private Integer wrongZoneCount;
     private Boolean wrongZoneDetected;
+
+    private String notes;
 }

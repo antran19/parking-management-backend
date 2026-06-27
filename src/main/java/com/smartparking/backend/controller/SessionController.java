@@ -127,6 +127,7 @@ public class SessionController {
     }
 
     /**
+    /**
      * Cập nhật URL ảnh lên phiên đỗ xe (sau khi Check-in/Check-out thành công).
      */
     @PutMapping("/staff/sessions/{sessionId}/images")
@@ -141,10 +142,13 @@ public class SessionController {
         return ResponseEntity.ok(ApiResponse.success("Cập nhật ảnh thành công", null));
     }
 
-    /**
-     * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân
-     * trang và tìm kiếm).
-     */
+    // /**
+    //  * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân
+    //  * trang và tìm kiếm).
+    //  */
+    //  * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân
+    //  * trang và tìm kiếm).
+    //  */
     @GetMapping("/staff/sessions/history")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<?>> getSessionsHistory(

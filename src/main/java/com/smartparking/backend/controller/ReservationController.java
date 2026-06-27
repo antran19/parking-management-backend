@@ -15,16 +15,18 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+
 /**
  * ReservationController — API đặt giữ chỗ cho Driver (Quảng phụ trách).
  *
  * Đã implement theo đúng scope Driver:
- * - POST   /api/v1/driver/reservations      → Tạo reservation
- * - GET    /api/v1/driver/reservations      → Xem danh sách reservation của mình
+ * - POST /api/v1/driver/reservations → Tạo reservation
+ * - GET /api/v1/driver/reservations → Xem danh sách reservation của mình
  * - DELETE /api/v1/driver/reservations/{id} → Hủy reservation
  *
  * NOTE:
- * Controller chỉ nhận request, lấy user hiện tại từ JWT rồi gọi ReservationService.
+ * Controller chỉ nhận request, lấy user hiện tại từ JWT rồi gọi
+ * ReservationService.
  */
 @RestController
 @RequestMapping("/api/v1/driver/reservations")
@@ -36,8 +38,7 @@ public class ReservationController {
 
     public ReservationController(
             ReservationService reservationService,
-            UserRepository userRepository
-    ) {
+            UserRepository userRepository) {
         this.reservationService = reservationService;
         this.userRepository = userRepository;
     }
@@ -51,8 +52,7 @@ public class ReservationController {
     @PostMapping
     public ApiResponse<ReservationResponse> createReservation(
             Authentication authentication,
-            @Valid @RequestBody ReservationRequest request
-    ) {
+            @Valid @RequestBody ReservationRequest request) {
         User currentUser = getCurrentUser(authentication);
         ReservationResponse response = reservationService.createReservation(currentUser, request);
 
@@ -82,8 +82,7 @@ public class ReservationController {
     @DeleteMapping("/{id}")
     public ApiResponse<ReservationResponse> cancelReservation(
             Authentication authentication,
-            @PathVariable UUID id
-    ) {
+            @PathVariable UUID id) {
         User currentUser = getCurrentUser(authentication);
         ReservationResponse response = reservationService.cancelReservation(currentUser, id);
 

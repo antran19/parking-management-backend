@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import java.util.concurrent.ThreadLocalRandom;
 import jakarta.servlet.http.HttpServletRequest;
 import com.smartparking.backend.entity.Payment;
 import com.smartparking.backend.entity.Reservation;
@@ -23,6 +24,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.smartparking.backend.entity.ParkingSession;
+import com.smartparking.backend.repository.ParkingSessionRepository;
 import com.smartparking.backend.dto.response.ApiResponse;
 import com.smartparking.backend.entity.Building;
 import com.smartparking.backend.entity.ParkingPass;
@@ -74,6 +77,7 @@ public class DriverController {
      * NOTE:
      * 3 repository dưới đây dùng cho chức năng vé tháng / quý / năm của Driver.
      */
+    private final ParkingSessionRepository parkingSessionRepository;
     private final ParkingPassRepository parkingPassRepository;
     private final BuildingRepository buildingRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
@@ -89,6 +93,7 @@ public class DriverController {
             BuildingRepository buildingRepository,
             VehicleTypeRepository vehicleTypeRepository,
             PaymentRepository paymentRepository,
+            ParkingSessionRepository parkingSessionRepository,
             VnPayService vnPayService) {
         this.userRepository = userRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
@@ -98,6 +103,7 @@ public class DriverController {
         this.buildingRepository = buildingRepository;
         this.vehicleTypeRepository = vehicleTypeRepository;
         this.paymentRepository = paymentRepository;
+        this.parkingSessionRepository = parkingSessionRepository;
         this.vnPayService = vnPayService;
     }
 
@@ -162,9 +168,10 @@ public class DriverController {
         String licensePlate = normalizeAndValidatePlate(request.getLicensePlate());
 
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
-             .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy loại xe"));
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy loại xe"));
         if (isBicycleVehicleType(vehicleType)) {
-            throw new BusinessException("Xe đạp không cần đăng ký biển số. Hệ thống sẽ tự sinh mã 4 số khi đặt chỗ.");
+            throw new BusinessException(
+                    "Xe đạp không cần đăng ký biển số. Hệ thống sẽ tự sinh mã dạng 1 chữ cái + 3 số khi đặt chỗ hoặc mua vé.");
         }
 
         validatePlateFormatMatchesVehicleType(licensePlate, vehicleType);
@@ -340,7 +347,6 @@ public class DriverController {
             @Valid @RequestBody RegisterParkingPassRequest request,
             HttpServletRequest httpRequest) {
         User currentUser = getCurrentUser(authentication);
-        String licensePlate = normalizeAndValidatePlate(request.getLicensePlate());
 
         Building building = buildingRepository.findById(request.getBuildingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bãi xe"));
@@ -348,8 +354,17 @@ public class DriverController {
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy loại xe"));
 
-        UserLicensePlate userPlate = ensurePlateBelongsToUser(currentUser, licensePlate);
-        ensurePlateVehicleTypeMatches(userPlate, vehicleType);
+        boolean bicyclePass = isBicycleVehicleType(vehicleType);
+
+        String licensePlate = bicyclePass
+                ? resolveBicycleIdentifier(request.getLicensePlate())
+                : normalizeAndValidatePlate(request.getLicensePlate());
+
+        if (!bicyclePass) {
+            UserLicensePlate userPlate = ensurePlateBelongsToUser(currentUser, licensePlate);
+            ensurePlateVehicleTypeMatches(userPlate, vehicleType);
+        }
+
         ensureNoActiveOrPendingPass(currentUser, licensePlate, request.getPassType());
 
         BigDecimal monthlyPrice = findMonthlyPrice(building, vehicleType);
@@ -384,7 +399,8 @@ public class DriverController {
      * NOTE Quảng - Driver scope:
      * - Driver chỉ validate vé của chính mình và trạng thái PENDING_PAYMENT.
      * - Không tạo fake URL.
-     * - Gọi VnPayService để tạo URL thanh toán sandbox và chờ callback kích hoạt vé.
+     * - Gọi VnPayService để tạo URL thanh toán sandbox và chờ callback kích hoạt
+     * vé.
      */
     @PostMapping("/driver/parking-passes/{passId}/pay")
     public ApiResponse<Map<String, Object>> continueParkingPassPayment(
@@ -458,7 +474,6 @@ public class DriverController {
     // Các hàm phụ trợ bên dưới giúp controller gọn hơn.
     // =========================================================
 
-
     /**
      * Tạo hoặc tái sử dụng đơn thanh toán VNPay cho parking pass.
      *
@@ -467,7 +482,7 @@ public class DriverController {
      * - Backend tạo Payment PENDING referenceType = PASS.
      * - Backend trả paymentUrl để FE redirect sang VNPay sandbox.
      * - Khi VNPay callback /driver/payments/vnpay-return hoặc /vnpay-ipn,
-     *   PaymentController sẽ kích hoạt pass nếu giao dịch thành công.
+     * PaymentController sẽ kích hoạt pass nếu giao dịch thành công.
      */
     private Map<String, Object> createOrReusePassPayment(ParkingPass pass, HttpServletRequest request) {
         BigDecimal amount = pass.getFee() == null ? BigDecimal.ZERO : pass.getFee();
@@ -595,8 +610,8 @@ public class DriverController {
 
         if (passType == ParkingPass.PassType.YEARLY) {
             return monthlyPrice
-                .multiply(BigDecimal.valueOf(12))
-                .multiply(new BigDecimal("0.9"));
+                    .multiply(BigDecimal.valueOf(12))
+                    .multiply(new BigDecimal("0.9"));
         }
 
         return monthlyPrice;
@@ -637,7 +652,8 @@ public class DriverController {
 
     private void ensurePlateVehicleTypeMatches(UserLicensePlate userPlate, VehicleType vehicleType) {
         if (userPlate.getVehicleType() == null) {
-            throw new BusinessException("Biển số chưa được gắn loại xe. Vui lòng cập nhật loại xe trong hồ sơ trước khi mua vé");
+            throw new BusinessException(
+                    "Biển số chưa được gắn loại xe. Vui lòng cập nhật loại xe trong hồ sơ trước khi mua vé");
         }
 
         if (!userPlate.getVehicleType().getId().equals(vehicleType.getId())) {
@@ -647,11 +663,71 @@ public class DriverController {
                     + vehicleType.getName());
         }
     }
-    //helpers for vehicle type validation
+
+    // helpers for vehicle type validation
     private boolean isBicycleVehicleType(VehicleType vehicleType) {
         return vehicleType != null
                 && vehicleType.getName() != null
                 && normalizeVietnameseText(vehicleType.getName()).contains("XE DAP");
+    }
+
+    /**
+     * Xe đạp không có biển số thật.
+     * Với vé tháng/quý/năm, backend tự sinh mã định danh dạng 1 chữ cái + 3 số.
+     * Ví dụ: B482, K017, A905.
+     */
+    private String resolveBicycleIdentifier(String input) {
+        String normalized = LicensePlateUtil.normalize(input);
+
+        if (normalized.isBlank()) {
+            return generateAvailableBicycleIdentifier();
+        }
+
+        if (!normalized.matches("^[A-Z][0-9]{3}$")) {
+            throw new BusinessException("Mã xe đạp phải gồm 1 chữ cái và 3 số. Ví dụ: B482");
+        }
+
+        if (!isBicycleIdentifierAvailable(normalized)) {
+            throw new BusinessException("Mã xe đạp đang được sử dụng, vui lòng tạo lại");
+        }
+
+        return normalized;
+    }
+
+    private String generateAvailableBicycleIdentifier() {
+        for (int attempt = 0; attempt < 1000; attempt++) {
+            char letter = (char) ('A' + ThreadLocalRandom.current().nextInt(26));
+            int number = ThreadLocalRandom.current().nextInt(0, 1000);
+            String candidate = String.format("%c%03d", letter, number);
+
+            if (isBicycleIdentifierAvailable(candidate)) {
+                return candidate;
+            }
+        }
+
+        throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
+    }
+
+    /**
+     * Check mã xe đạp độc nhất trong dữ liệu còn hiệu lực.
+     * Không sửa Repository: dùng method có sẵn + findAll() của JpaRepository.
+     */
+    private boolean isBicycleIdentifierAvailable(String identifier) {
+        boolean hasActiveReservation = !reservationRepository.findByLicensePlateAndStatusIn(
+                identifier,
+                List.of(Reservation.ReservationStatus.PENDING, Reservation.ReservationStatus.CONFIRMED)).isEmpty();
+
+        boolean hasActiveSession = parkingSessionRepository
+                .findByLicensePlateAndStatus(identifier, ParkingSession.SessionStatus.ACTIVE)
+                .isPresent();
+
+        boolean hasActiveOrPendingPass = parkingPassRepository.findAll()
+                .stream()
+                .filter(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE
+                        || pass.getStatus() == ParkingPass.PassStatus.PENDING_PAYMENT)
+                .anyMatch(pass -> LicensePlateUtil.normalize(pass.getLicensePlate()).equals(identifier));
+
+        return !hasActiveReservation && !hasActiveSession && !hasActiveOrPendingPass;
     }
 
     private void validatePlateFormatMatchesVehicleType(String licensePlate, VehicleType vehicleType) {
@@ -666,27 +742,44 @@ public class DriverController {
         }
 
         if (vehicleTypeName.contains("XE MAY")) {
-            validateStandardPlate(licensePlate, "xe máy");
+            validateMotorbikePlate(licensePlate);
             return;
         }
 
-        if (vehicleTypeName.contains("O TO")) {
-            validateStandardPlate(licensePlate, "ô tô");
+        if (vehicleTypeName.contains("O TO") || vehicleTypeName.equals("O")) {
+            validateCarPlate(licensePlate);
             return;
         }
 
-        if (vehicleTypeName.contains("XE TAI")) {
-            validateStandardPlate(licensePlate, "xe tải");
+        if (vehicleTypeName.contains("XE TAI") || vehicleTypeName.equals("XE")) {
+            validateTruckPlate(licensePlate);
             return;
         }
 
         throw new BusinessException("Loại xe chưa được hỗ trợ validation: " + vehicleType.getName());
     }
 
-    private void validateStandardPlate(String licensePlate, String vehicleLabel) {
-        if (!licensePlate.matches("^[0-9]{2}[A-Z]{1,2}[0-9]?[0-9]{4,6}$")) {
+    private void validateMotorbikePlate(String licensePlate) {
+        boolean oldMotorbike = licensePlate.matches("^[0-9]{2}[A-Z][0-9][0-9]{4,5}$");
+        boolean newMotorbike = licensePlate.matches("^[0-9]{2}[A-Z]{2}[0-9]{4,5}$");
+
+        if (!oldMotorbike && !newMotorbike) {
             throw new BusinessException(
-                    "Biển số " + vehicleLabel + " không đúng định dạng. Ví dụ hợp lệ: 49E72932, 51H12345, 30AB99988, 51AC12345 hoặc 59X112345");
+                    "Biển số xe máy không đúng định dạng. Ví dụ: 51H1-2345, 59X1-123.45 hoặc 59AA-729.32");
+        }
+    }
+
+    private void validateCarPlate(String licensePlate) {
+        if (!licensePlate.matches("^[0-9]{2}[A-Z]{1,2}[0-9]{4,5}$")) {
+            throw new BusinessException(
+                    "Biển số ô tô không đúng định dạng. Ví dụ: 30A-1234, 30A-123.45 hoặc 50AB-123.45");
+        }
+    }
+
+    private void validateTruckPlate(String licensePlate) {
+        if (!licensePlate.matches("^[0-9]{2}[A-Z]{1,2}[0-9]{4,5}$")) {
+            throw new BusinessException(
+                    "Biển số xe tải không đúng định dạng. Ví dụ: 51C-123.45, 51D-123.45 hoặc 60C-456.78");
         }
     }
 
@@ -791,7 +884,6 @@ public class DriverController {
         @NotNull(message = "vehicleTypeId không được để trống")
         private UUID vehicleTypeId;
 
-        @NotBlank(message = "Biển số không được để trống")
         private String licensePlate;
 
         @NotNull(message = "passType không được để trống")

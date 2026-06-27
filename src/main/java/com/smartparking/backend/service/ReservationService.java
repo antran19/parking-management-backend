@@ -352,8 +352,8 @@ public class ReservationService {
             return generateAvailableBicycleIdentifier();
         }
 
-        if (!normalized.matches("^[0-9]{4}$")) {
-            throw new BusinessException("Mã xe đạp phải gồm đúng 4 số");
+        if (!normalized.matches("^[A-Z][0-9]{3}$")) {
+            throw new BusinessException("Mã xe đạp phải gồm 1 chữ cái và 3 số. Ví dụ: B482");
         }
 
         if (!isBicycleIdentifierAvailable(normalized)) {
@@ -364,8 +364,10 @@ public class ReservationService {
     }
 
     private String generateAvailableBicycleIdentifier() {
-        for (int attempt = 0; attempt < 100; attempt++) {
-            String candidate = String.valueOf(ThreadLocalRandom.current().nextInt(1000, 10000));
+        for (int attempt = 0; attempt < 1000; attempt++) {
+            char letter = (char) ('A' + ThreadLocalRandom.current().nextInt(26));
+            int number = ThreadLocalRandom.current().nextInt(0, 1000);
+            String candidate = String.format("%c%03d", letter, number);
 
             if (isBicycleIdentifierAvailable(candidate)) {
                 return candidate;
@@ -374,12 +376,11 @@ public class ReservationService {
 
         throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
     }
-
+    // Xe đạp: tự sinh mã dạng 1 chữ cái + 3 số, ví dụ B482.
     private boolean isBicycleIdentifierAvailable(String identifier) {
         boolean hasActiveReservation = !reservationRepository.findByLicensePlateAndStatusIn(
                 identifier,
-                List.of(Reservation.ReservationStatus.PENDING, Reservation.ReservationStatus.CONFIRMED)
-        ).isEmpty();
+                List.of(Reservation.ReservationStatus.PENDING, Reservation.ReservationStatus.CONFIRMED)).isEmpty();
 
         boolean hasActiveSession = parkingSessionRepository
                 .findByLicensePlateAndStatus(identifier, ParkingSession.SessionStatus.ACTIVE)

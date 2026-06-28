@@ -109,6 +109,7 @@ public class ParkingConfigController {
                     m.put("gateName", g.getGateName());
                     m.put("gateType", g.getGateType().name());
                     m.put("isActive", g.getIsActive());
+                    m.put("barrierState", g.getBarrierState());
                     if (g.getZone() != null) {
                         m.put("zoneId", g.getZone().getId());
                         m.put("zoneCode", g.getZone().getZoneCode());

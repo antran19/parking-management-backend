@@ -37,6 +37,9 @@ public class Gate {
     @Column(name = "is_active")
     private Boolean isActive = true;
 
+    @Column(name = "barrier_state", length = 10)
+    private String barrierState = "CLOSED"; // Default state
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

@@ -265,6 +265,10 @@ public class AdminManagementController {
         String state = text(body, "state").toUpperCase();
         if (!state.equals("OPEN") && !state.equals("CLOSED"))
             throw new IllegalArgumentException("Trạng thái barrier không hợp lệ (OPEN hoặc CLOSED)");
+        
+        gate.setBarrierState(state);
+        gateRepository.save(gate);
+
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("gateId", gate.getId());
         payload.put("gateName", gate.getGateName());
@@ -502,6 +506,7 @@ public class AdminManagementController {
         map.put("gateName", gate.getGateName());
         map.put("gateType", gate.getGateType().name());
         map.put("isActive", gate.getIsActive());
+        map.put("barrierState", gate.getBarrierState());
         map.put("buildingId", gate.getBuilding().getId());
         map.put("buildingName", gate.getBuilding().getName());
         if (gate.getZone() != null) {

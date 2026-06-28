@@ -32,6 +32,7 @@ import java.util.Optional;
 import com.smartparking.backend.dto.response.EligibleZoneResponse;
 import java.util.stream.Collectors;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Service xử lý các phiên gửi xe (Parking Session) - Nghiệp vụ cốt lõi của hệ
@@ -123,13 +124,7 @@ public class ParkingSessionService {
         // Chặn nghiệp vụ nếu bãi đỗ đang trong tình trạng khẩn cấp
         emergencyService.ensureNormalOperation();
 
-        // Bước 1: Validate — biển số không được có session đang hoạt động
-        sessionRepository.findByLicensePlateAndStatus(request.getLicensePlate(), SessionStatus.ACTIVE)
-                .ifPresent(s -> {
-                    throw new BusinessException(
-                            "Biển số " + request.getLicensePlate() + " đang có phiên gửi xe chưa kết thúc (Mã: " +
-                                    s.getSessionCode() + "). Vui lòng check-out trước.");
-                });
+
 
         // Bước 2: Tìm các thông tin liên quan
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
@@ -137,12 +132,39 @@ public class ParkingSessionService {
         Gate mainGate = gateRepository.findById(request.getGateEntryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng vào không tồn tại"));
 
-        // Bước 3: Kiểm tra Blacklist
-        blacklistService.findActiveByPlate(request.getLicensePlate()).ifPresent(blacklistPlate -> {
-            blacklistService.alertBlacklistAttempt(request.getLicensePlate(), blacklistPlate, mainGate);
-            throw new BusinessException("Biển số " + request.getLicensePlate()
-                    + " đang nằm trong blacklist. Lý do: " + blacklistPlate.getReason());
-        });
+        boolean isBicycle = isBicycleVehicleType(vehicleType);
+        String licensePlate;
+        if (isBicycle) {
+            licensePlate = resolveBicycleIdentifier(request.getLicensePlate());
+            request.setLicensePlate(licensePlate);
+        } else {
+            String rawPlate = request.getLicensePlate();
+            if (rawPlate == null || rawPlate.isBlank()) {
+                throw new BusinessException("Biển số xe không được để trống");
+            }
+            if (!rawPlate.matches("^\\s*\\d{2}[A-Za-z]{1,2}\\d?[- ]?\\d{3,5}(\\.\\d{2})?\\s*$")) {
+                throw new BusinessException("Biển số không đúng định dạng. Ví dụ: 51F-123.45, 30A-12345 hoặc 59X1-12345");
+            }
+            licensePlate = LicensePlateUtil.normalize(rawPlate);
+            request.setLicensePlate(licensePlate);
+        }
+
+        // Bước 3: Validate — biển số không được có session đang hoạt động
+        sessionRepository.findByLicensePlateAndStatus(licensePlate, SessionStatus.ACTIVE)
+                .ifPresent(s -> {
+                    throw new BusinessException(
+                            "Biển số " + licensePlate + " đang có phiên gửi xe chưa kết thúc (Mã: " +
+                                    s.getSessionCode() + "). Vui lòng check-out trước.");
+                });
+
+        // Bước 4: Kiểm tra Blacklist (chỉ kiểm tra nếu không phải xe đạp)
+        if (!isBicycle) {
+            blacklistService.findActiveByPlate(licensePlate).ifPresent(blacklistPlate -> {
+                blacklistService.alertBlacklistAttempt(licensePlate, blacklistPlate, mainGate);
+                throw new BusinessException("Biển số " + licensePlate
+                        + " đang nằm trong blacklist. Lý do: " + blacklistPlate.getReason());
+            });
+        }
 
         // Tự động kiểm tra Vé tháng (ParkingPass) hoạt động tại Tòa nhà này
         boolean hasValidPass = false;
@@ -256,8 +278,6 @@ public class ParkingSessionService {
                 .zoneEntryTime(null) // Chưa quét vào zone
                 .qrCode(sessionCode)
                 .status(SessionStatus.ACTIVE)
-                .entryPlateImageUrl(request.getEntryPlateImageUrl())
-                .entryFaceImageUrl(request.getEntryFaceImageUrl())
                 .notes(request.getNotes())
                 .build();
         session = sessionRepository.save(session);
@@ -423,8 +443,6 @@ public class ParkingSessionService {
         session.setExitMainGate(exitGate);
         session.setDurationMinutes(durationMinutes);
         session.setTotalFee(totalFee);
-        session.setExitPlateImageUrl(request.getExitPlateImageUrl());
-        session.setExitFaceImageUrl(request.getExitFaceImageUrl());
         session.setStatus(SessionStatus.COMPLETED);
 
         // Bước 5: Lưu thông tin Payment
@@ -711,7 +729,8 @@ public class ParkingSessionService {
                 .entryPlateImageUrl(session.getEntryPlateImageUrl())
                 .entryFaceImageUrl(session.getEntryFaceImageUrl())
                 .exitPlateImageUrl(session.getExitPlateImageUrl())
-                .exitFaceImageUrl(session.getExitFaceImageUrl());
+                .exitFaceImageUrl(session.getExitFaceImageUrl())
+                .notes(session.getNotes());
 
         if (zone != null) {
             builder.zoneCode(zone.getZoneCode())
@@ -1071,5 +1090,78 @@ public class ParkingSessionService {
         if (!hasActiveGate) {
             throw new BusinessException("Khu vực đỗ xe " + zone.getZoneName() + " hiện tại không thể tiếp nhận xe do chưa được cấu hình cổng vào hoạt động.");
         }
+    }
+
+    /**
+     * Xe đạp không dùng biển số thật.
+     * Hệ thống chỉ dùng mã 1 chữ và 3 số để định danh.
+     */
+    private boolean isBicycleVehicleType(VehicleType vehicleType) {
+        if (vehicleType == null || vehicleType.getName() == null) {
+            return false;
+        }
+
+        return normalizeVietnameseText(vehicleType.getName()).contains("XE DAP");
+    }
+
+    private String resolveBicycleIdentifier(String input) {
+        String normalized = LicensePlateUtil.normalize(input);
+
+        if (normalized.isBlank()) {
+            return generateAvailableBicycleIdentifier();
+        }
+
+        if (!normalized.matches("^[A-Z][0-9]{3}$")) {
+            throw new BusinessException("Mã xe đạp phải gồm 1 chữ cái in hoa và 3 số (Ví dụ: A123)");
+        }
+
+        // Nếu khách tự cung cấp mã (VD: A123), chỉ cần đảm bảo mã đó KHÔNG CÓ XE NÀO ĐANG ĐỖ (ACTIVE).
+        // Chúng ta cho phép check-in nếu mã đó đang ở trạng thái PENDING/CONFIRMED (vì khách đang check-in cho chính đặt chỗ đó).
+        boolean hasActiveSession = sessionRepository
+                .findByLicensePlateAndStatus(normalized, ParkingSession.SessionStatus.ACTIVE)
+                .isPresent();
+
+        if (hasActiveSession) {
+            throw new BusinessException("Mã xe đạp này đang có một chiếc xe đỗ trong bãi, vui lòng kiểm tra lại");
+        }
+
+        return normalized;
+    }
+
+    private String generateAvailableBicycleIdentifier() {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            char randomLetter = (char) ('A' + ThreadLocalRandom.current().nextInt(26));
+            String randomDigits = String.format("%03d", ThreadLocalRandom.current().nextInt(1000));
+            String candidate = randomLetter + randomDigits;
+
+            if (isBicycleIdentifierAvailable(candidate)) {
+                return candidate;
+            }
+        }
+        throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
+    }
+
+    // Hàm này chỉ dùng khi hệ thống TỰ ĐỘNG SINH mã mới, để đảm bảo mã sinh ra là duy nhất 100%
+    private boolean isBicycleIdentifierAvailable(String identifier) {
+        boolean hasActiveReservation = !reservationRepository.findByLicensePlateAndStatusIn(
+                identifier,
+                List.of(Reservation.ReservationStatus.PENDING, Reservation.ReservationStatus.CONFIRMED)
+        ).isEmpty();
+
+        boolean hasActiveSession = sessionRepository
+                .findByLicensePlateAndStatus(identifier, ParkingSession.SessionStatus.ACTIVE)
+                .isPresent();
+
+        return !hasActiveReservation && !hasActiveSession;
+    }
+
+    private String normalizeVietnameseText(String value) {
+        String normalized = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD);
+        return normalized
+                .replaceAll("\\p{M}", "")
+                .replace("Đ", "D")
+                .replace("đ", "d")
+                .toUpperCase()
+                .trim();
     }
 }

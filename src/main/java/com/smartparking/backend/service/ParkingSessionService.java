@@ -132,6 +132,9 @@ public class ParkingSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Loại phương tiện không tồn tại"));
         Gate mainGate = gateRepository.findById(request.getGateEntryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng vào không tồn tại"));
+        if (!Boolean.TRUE.equals(mainGate.getIsActive())) {
+            throw new BusinessException("Cổng vào " + mainGate.getGateName() + " đang tạm khóa hoặc bảo trì.");
+        }
 
         boolean isBicycle = isBicycleVehicleType(vehicleType);
 
@@ -368,6 +371,9 @@ public class ParkingSessionService {
         // 3. Tìm cổng phụ (Zone Gate)
         Gate zoneGate = gateRepository.findById(request.getGateEntryId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng phụ không tồn tại"));
+        if (!Boolean.TRUE.equals(zoneGate.getIsActive())) {
+            throw new BusinessException("Cổng phụ " + zoneGate.getGateName() + " đang tạm khóa hoặc bảo trì.");
+        }
 
         if (zoneGate.getGateType() != Gate.GateType.ZONE_ENTRY && zoneGate.getGateType() != Gate.GateType.ZONE_BOTH) {
             throw new BusinessException("Cổng " + zoneGate.getGateName() + " không phải là cổng vào Zone.");
@@ -461,6 +467,9 @@ public class ParkingSessionService {
 
         Gate exitGate = gateRepository.findById(request.getGateExitId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng ra không tồn tại"));
+        if (!Boolean.TRUE.equals(exitGate.getIsActive())) {
+            throw new BusinessException("Cổng ra " + exitGate.getGateName() + " đang tạm khóa hoặc bảo trì.");
+        }
 
         // Bước 2: Tính thời gian gửi
         LocalDateTime exitTime = LocalDateTime.now();
@@ -1029,20 +1038,18 @@ public class ParkingSessionService {
             throw new BusinessException("Xe đã đi vào khu đỗ, không thể đổi phân khu");
         }
 
-        // Lấy toàn bộ zone của loại phương tiện này có cổng vào hoạt động
+        // Lấy toàn bộ zone của loại phương tiện này
         List<Zone> allMatchedZones = zoneRepository.findAll().stream()
                 .filter(z -> z.getVehicleType().getId().equals(session.getVehicleType().getId()))
                 .filter(z -> z.getStatus() == Zone.ZoneStatus.ACTIVE || z.getStatus() == Zone.ZoneStatus.FULL)
-                .filter(z -> {
-                    // Kiểm tra xem zone có cổng vào hoạt động không
-                    return gateRepository.findByBuildingId(z.getFloor().getBuilding().getId()).stream()
-                            .anyMatch(g -> g.getZone() != null
-                                    && g.getZone().getId().equals(z.getId())
-                                    && Boolean.TRUE.equals(g.getIsActive())
-                                    && (g.getGateType() == Gate.GateType.ZONE_ENTRY
-                                            || g.getGateType() == Gate.GateType.ZONE_BOTH));
-                })
                 .sorted((z1, z2) -> {
+                    // Ưu tiên các zone có thể chọn trước
+                    boolean z1Selectable = isZoneSelectable(z1);
+                    boolean z2Selectable = isZoneSelectable(z2);
+                    if (z1Selectable != z2Selectable) {
+                        return z1Selectable ? -1 : 1;
+                    }
+
                     // Sắp xếp ưu tiên:
                     // 1. Số lượng chỗ trống giảm dần (tức occupied tăng dần)
                     int occ1 = (z1.getCurrentCount() != null ? z1.getCurrentCount() : 0)
@@ -1066,6 +1073,15 @@ public class ParkingSessionService {
             int current = z.getCurrentCount() != null ? z.getCurrentCount() : 0;
             int reserved = z.getReservedCount() != null ? z.getReservedCount() : 0;
             int occupied = current + reserved;
+
+            boolean hasActiveGate = hasActiveEntryGate(z);
+            boolean isMaintenance = z.getStatus() == Zone.ZoneStatus.MAINTENANCE 
+                    || z.getStatus() == Zone.ZoneStatus.LOCKED 
+                    || !hasActiveGate;
+            boolean isSelectable = z.getStatus() == Zone.ZoneStatus.ACTIVE 
+                    && hasActiveGate 
+                    && (occupied < capacity);
+
             responseList.add(EligibleZoneResponse.builder()
                     .zoneId(z.getId())
                     .zoneCode(z.getZoneCode())
@@ -1075,10 +1091,34 @@ public class ParkingSessionService {
                     .currentCount(current)
                     .reservedCount(reserved)
                     .priority(i + 1)
+                    .isMaintenance(isMaintenance)
+                    .isSelectable(isSelectable)
                     .build());
         }
 
         return responseList;
+    }
+
+    private boolean isZoneSelectable(Zone zone) {
+        int capacity = zone.getCapacity() != null ? zone.getCapacity() : 0;
+        int current = zone.getCurrentCount() != null ? zone.getCurrentCount() : 0;
+        int reserved = zone.getReservedCount() != null ? zone.getReservedCount() : 0;
+        int occupied = current + reserved;
+
+        return zone.getStatus() == Zone.ZoneStatus.ACTIVE 
+                && hasActiveEntryGate(zone) 
+                && (occupied < capacity);
+    }
+
+    private boolean hasActiveEntryGate(Zone zone) {
+        if (zone.getFloor() == null || zone.getFloor().getBuilding() == null) {
+            return false;
+        }
+        return gateRepository.findByBuildingId(zone.getFloor().getBuilding().getId()).stream()
+                .anyMatch(g -> g.getZone() != null 
+                        && g.getZone().getId().equals(zone.getId()) 
+                        && Boolean.TRUE.equals(g.getIsActive()) 
+                        && (g.getGateType() == Gate.GateType.ZONE_ENTRY || g.getGateType() == Gate.GateType.ZONE_BOTH));
     }
 
     /**
@@ -1150,14 +1190,8 @@ public class ParkingSessionService {
     }
 
     private void validateZoneHasEntryGate(Zone zone) {
-        boolean hasActiveGate = gateRepository.findByBuildingId(zone.getFloor().getBuilding().getId()).stream()
-                .anyMatch(g -> g.getZone() != null
-                        && g.getZone().getId().equals(zone.getId())
-                        && Boolean.TRUE.equals(g.getIsActive())
-                        && (g.getGateType() == Gate.GateType.ZONE_ENTRY || g.getGateType() == Gate.GateType.ZONE_BOTH));
-        if (!hasActiveGate) {
-            throw new BusinessException("Khu vực đỗ xe " + zone.getZoneName()
-                    + " hiện tại không thể tiếp nhận xe do chưa được cấu hình cổng vào hoạt động.");
+        if (!hasActiveEntryGate(zone)) {
+            throw new BusinessException("Khu vực đỗ xe " + zone.getZoneName() + " hiện tại không thể tiếp nhận xe do chưa được cấu hình cổng vào hoạt động.");
         }
     }
 

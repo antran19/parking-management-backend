@@ -13,19 +13,16 @@ public class RevenueResponse {
     private LocalDateTime to;
     private BigDecimal totalRevenue;
     private long totalSessions;
-    private String currency;
     private java.util.List<ChartDataPoint> chartData;
 
     public RevenueResponse() {
     }
 
-    public RevenueResponse(LocalDateTime from, LocalDateTime to, BigDecimal totalRevenue, long totalSessions,
-            String currency, java.util.List<ChartDataPoint> chartData) {
+    public RevenueResponse(LocalDateTime from, LocalDateTime to, BigDecimal totalRevenue, long totalSessions, java.util.List<ChartDataPoint> chartData) {
         this.from = from;
         this.to = to;
         this.totalRevenue = totalRevenue;
         this.totalSessions = totalSessions;
-        this.currency = currency;
         this.chartData = chartData;
     }
 
@@ -67,13 +64,5 @@ public class RevenueResponse {
 
     public void setTotalSessions(long totalSessions) {
         this.totalSessions = totalSessions;
-    }
-
-    public String getCurrency() {
-        return currency;
-    }
-
-    public void setCurrency(String currency) {
-        this.currency = currency;
     }
 }

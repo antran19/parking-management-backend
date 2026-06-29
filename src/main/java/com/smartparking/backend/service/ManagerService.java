@@ -6,6 +6,7 @@ import com.smartparking.backend.entity.ExceptionLog.ExceptionType;
 import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.repository.*;
+import com.smartparking.backend.repository.projection.ChartDataProjection;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
@@ -69,7 +70,7 @@ public class ManagerService {
         // 2. activeSessions
         long activeSessions = parkingSessionRepository.countByStatus(ParkingSession.SessionStatus.ACTIVE);
 
-        // 3. occupancyPercent
+        // 3. occupancyPercent : sức chứa
         List<Zone> zones = zoneRepository.findAll();
         int totalCapacity = zones.stream().mapToInt(Zone::getCapacity).sum();
         int totalOccupied = zones.stream().mapToInt(z -> z.getCurrentCount() + z.getReservedCount()).sum();
@@ -156,7 +157,7 @@ public class ManagerService {
                 start,
                 end);
 
-        java.util.List<com.smartparking.backend.repository.projection.ChartDataProjection> projections;
+        List<ChartDataProjection> projections;
         if ("today".equalsIgnoreCase(type)) {
             projections = paymentRepository.sumRevenueGroupedByHour(start, end);
         } else if ("month".equalsIgnoreCase(type)) {
@@ -167,16 +168,15 @@ public class ManagerService {
             projections = paymentRepository.sumRevenueGroupedByDay(start, end);
         }
 
-        java.util.List<com.smartparking.backend.dto.response.ChartDataPoint> chartData = projections.stream()
-                .map(p -> new com.smartparking.backend.dto.response.ChartDataPoint(p.getLabel(), p.getValue()))
-                .collect(java.util.stream.Collectors.toList());
+        List<ChartDataPoint> chartData = projections.stream()
+                .map(p -> new ChartDataPoint(p.getLabel(), p.getValue()))
+                .collect(Collectors.toList());
 
         return RevenueResponse.builder()
                 .from(start)
                 .to(end)
                 .totalRevenue(revenue == null ? BigDecimal.ZERO : revenue)
                 .totalSessions(totalSessions)
-                .currency("VND")
                 .chartData(chartData)
                 .build();
     }
@@ -214,12 +214,27 @@ public class ManagerService {
 
         long totalSessions = parkingSessionRepository.countByEntryTimeBetween(start, end);
 
+        List<ChartDataProjection> projections;
+        if ("today".equalsIgnoreCase(type)) {
+            projections = parkingSessionRepository.countVisitsGroupedByHour(start, end);
+        } else if ("month".equalsIgnoreCase(type)) {
+            projections = parkingSessionRepository.countVisitsGroupedByDay(start, end);
+        } else if ("year".equalsIgnoreCase(type)) {
+            projections = parkingSessionRepository.countVisitsGroupedByMonth(start, end);
+        } else {
+            projections = parkingSessionRepository.countVisitsGroupedByDay(start, end);
+        }
+
+        List<ChartDataPoint> chartData = projections.stream()
+                .map(p -> new ChartDataPoint(p.getLabel(), p.getValue()))
+                .collect(Collectors.toList());
+
         return RevenueResponse.builder()
                 .from(start)
                 .to(end)
                 .totalSessions(totalSessions)
                 .totalRevenue(BigDecimal.ZERO) // không dùng, set 0
-                .currency("VND")
+                .chartData(chartData)
                 .build();
     }
 

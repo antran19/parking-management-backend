@@ -449,7 +449,7 @@ public class ManagerService {
      * ================================
      */
     @Transactional
-    public Gate createGate(Map<String, Object> body) {
+    public Map<String, Object> createGate(Map<String, Object> body) {
         Building building = buildingRepository.findById(uuid(body, "buildingId"))
                 .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
 
@@ -461,11 +461,11 @@ public class ManagerService {
                 .isActive(true)
                 .build();
 
-        return gateRepository.save(gate);
+        return gateMap(gateRepository.save(gate));
     }
 
     @Transactional
-    public Gate updateGate(UUID id, Map<String, Object> body) {
+    public Map<String, Object> updateGate(UUID id, Map<String, Object> body) {
         Gate gate = gateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Gate không tồn tại"));
 
@@ -476,7 +476,7 @@ public class ManagerService {
         if (body.containsKey("isActive"))
             gate.setIsActive(Boolean.parseBoolean(String.valueOf(body.get("isActive"))));
 
-        return gateRepository.save(gate);
+        return gateMap(gateRepository.save(gate));
     }
 
     @Transactional
@@ -522,6 +522,26 @@ public class ManagerService {
 
     private int number(Map<String, Object> body, String key, int defaultVal) {
         return body.containsKey(key) ? Integer.parseInt(body.get(key).toString()) : defaultVal;
+    }
+
+    private Map<String, Object> gateMap(Gate gate) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", gate.getId());
+        map.put("gateCode", gate.getGateCode());
+        map.put("gateName", gate.getGateName());
+        map.put("gateType", gate.getGateType() != null ? gate.getGateType().name() : null);
+        map.put("isActive", gate.getIsActive());
+        map.put("barrierState", gate.getBarrierState());
+        if (gate.getBuilding() != null) {
+            map.put("buildingId", gate.getBuilding().getId());
+            map.put("buildingName", gate.getBuilding().getName());
+        }
+        if (gate.getZone() != null) {
+            map.put("zoneId", gate.getZone().getId());
+            map.put("zoneCode", gate.getZone().getZoneCode());
+            map.put("zoneName", gate.getZone().getZoneName());
+        }
+        return map;
     }
 
 }

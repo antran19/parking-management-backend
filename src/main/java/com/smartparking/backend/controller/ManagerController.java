@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.UUID;
 import com.smartparking.backend.entity.Zone;
 import com.smartparking.backend.entity.PricingRule;
-import com.smartparking.backend.entity.Gate;
 
 @RestController
 @Tag(name = "Manager", description = "Manager APIs")
@@ -157,12 +156,12 @@ public class ManagerController {
      * ================================
      */
     @PostMapping("/gate")
-    public ResponseEntity<ApiResponse<Gate>> createGate(@RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createGate(@RequestBody Map<String, Object> body) {
         return ResponseEntity.ok(ApiResponse.success("Đã tạo cổng", managerService.createGate(body)));
     }
 
     @PutMapping("/gate/{id}")
-    public ResponseEntity<ApiResponse<Gate>> updateGate(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateGate(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
         return ResponseEntity.ok(ApiResponse.success("Đã cập nhật cổng", managerService.updateGate(id, body)));
     }
 

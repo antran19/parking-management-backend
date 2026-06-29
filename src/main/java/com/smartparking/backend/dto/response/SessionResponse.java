@@ -17,44 +17,64 @@ import java.util.UUID;
 public class SessionResponse {
 
     private UUID sessionId;
-    private String sessionCode;   // Mã vé: PS20240513001
+    private String sessionCode;
 
-    // Thông tin zone được phân bổ
-    private String zoneCode;      // A
-    private String floorName;     // "B2"
-    private String zoneName;      // "Khu A - Xe máy"
+    // Thông tin zone
+    private UUID zoneId;
+    private String zoneCode;
+    private String floorName;
+    private String zoneName;
+
+    // Thông tin bãi xe
+    private UUID buildingId;
+    private String buildingName;
+    private String buildingAddress;
 
     // Thông tin xe
+    private UUID vehicleTypeId;
     private String licensePlate;
     private String vehicleType;
 
     // Thời gian
+    private LocalDateTime sessionCreatedAt;
     private LocalDateTime entryTime;
     private LocalDateTime exitTime;
+    private LocalDateTime zoneEntryTime;
+    private LocalDateTime zoneExitTime;
     private Integer durationMinutes;
 
     // Phí
     private BigDecimal totalFee;
 
-    // Trạng thái session
+    // Trạng thái
     private ParkingSession.SessionStatus status;
-
     private ParkingSession.DriverType driverType;
-
-    // Trạng thái thanh toán (dùng khi check-out)
     private String paymentStatus;
 
-    // Message hướng dẫn cho tài xế (hiển thị tại cổng vào)
-    private String guideMessage; // "Vui lòng đến Tầng B2 - Khu A - Xe máy"
+    // Hướng dẫn
+    private String guideMessage;
 
+    // Ảnh
     private String entryPlateImageUrl;
     private String entryFaceImageUrl;
     private String exitPlateImageUrl;
     private String exitFaceImageUrl;
 
+    // Cổng ra vào
+    private String entryMainGateCode;
+    private String entryMainGateName;
+    private String exitMainGateCode;
+    private String exitMainGateName;
+    private String entryZoneGateCode;
+    private String entryZoneGateName;
+    private String exitZoneGateCode;
+    private String exitZoneGateName;
+
+    // Thông tin khách / vé
     private String customerName;
     private String passType;
 
+    // Sai zone
     private Integer wrongZoneCount;
     private Boolean wrongZoneDetected;
 

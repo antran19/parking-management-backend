@@ -1,6 +1,7 @@
 package com.smartparking.backend.repository;
 
 import com.smartparking.backend.entity.Payment;
+import com.smartparking.backend.repository.projection.ChartDataProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -26,10 +27,25 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
             @Param("to") LocalDateTime to
     );
 
+    @Query(value = "SELECT TO_CHAR(paid_at, 'HH24:00') as label, SUM(amount) as value " +
+            "FROM payments WHERE status = 'COMPLETED' AND paid_at BETWEEN :from AND :to " +
+            "GROUP BY TO_CHAR(paid_at, 'HH24:00') ORDER BY label ASC", nativeQuery = true)
+    List<ChartDataProjection> sumRevenueGroupedByHour(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(paid_at, 'DD/MM') as label, SUM(amount) as value " +
+            "FROM payments WHERE status = 'COMPLETED' AND paid_at BETWEEN :from AND :to " +
+            "GROUP BY TO_CHAR(paid_at, 'DD/MM') ORDER BY MIN(paid_at) ASC", nativeQuery = true)
+    List<ChartDataProjection> sumRevenueGroupedByDay(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(paid_at, 'MM/YYYY') as label, SUM(amount) as value " +
+            "FROM payments WHERE status = 'COMPLETED' AND paid_at BETWEEN :from AND :to " +
+            "GROUP BY TO_CHAR(paid_at, 'MM/YYYY') ORDER BY MIN(paid_at) ASC", nativeQuery = true)
+    List<ChartDataProjection> sumRevenueGroupedByMonth(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = com.smartparking.backend.entity.Payment.PaymentStatus.COMPLETED AND p.paidAt >= :start AND p.paidAt < :end")
     BigDecimal sumCompletedPaymentsBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    // Lấy danh sách payment trong khoảng thời gian
+    // Lấy danh sách payment trong khoảng thời gian (dùng để nhóm theo ngày/tháng/năm ở Service)
     List<Payment> findByPaidAtBetween(LocalDateTime from, LocalDateTime to);
 
     // Phân trang danh sách payment

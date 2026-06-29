@@ -17,12 +17,15 @@ import java.util.UUID;
 @Repository
 public interface ParkingSessionRepository extends JpaRepository<ParkingSession, UUID> {
     Optional<ParkingSession> findBySessionCode(String sessionCode);
+
     Optional<ParkingSession> findByLicensePlateAndStatus(String licensePlate, SessionStatus status);
-    Page<ParkingSession> findByStatus(SessionStatus status, Pageable pageable);
-    List<ParkingSession> findByLicensePlateOrderByEntryTimeDesc(String licensePlate);
 
     // Lấy các session có entryTime trong khoảng
     List<ParkingSession> findByEntryTimeBetween(LocalDateTime from, LocalDateTime to);
+
+    Page<ParkingSession> findByStatus(SessionStatus status, Pageable pageable);
+
+    List<ParkingSession> findByLicensePlateOrderByEntryTimeDesc(String licensePlate);
 
     long countByEntryTimeBetween(LocalDateTime from, LocalDateTime to);
 
@@ -43,4 +46,23 @@ public interface ParkingSessionRepository extends JpaRepository<ParkingSession, 
     Page<ParkingSession> searchSessions(@Param("licensePlate") String licensePlate,
                                         @Param("status") SessionStatus status,
                                         Pageable pageable);
+
+    // Aggregation queries for chart data using unified projection
+    @Query(value = "SELECT TO_CHAR(entry_time, 'HH24:00') as label, COUNT(*) as value " +
+                    "FROM parking_sessions WHERE entry_time BETWEEN :from AND :to " +
+                    "GROUP BY TO_CHAR(entry_time, 'HH24:00') ORDER BY label ASC", nativeQuery = true)
+    List<com.smartparking.backend.repository.projection.ChartDataProjection> countVisitsGroupedByHour(
+                    @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(entry_time, 'DD/MM') as label, COUNT(*) as value " +
+                    "FROM parking_sessions WHERE entry_time BETWEEN :from AND :to " +
+                    "GROUP BY TO_CHAR(entry_time, 'DD/MM') ORDER BY MIN(entry_time) ASC", nativeQuery = true)
+    List<com.smartparking.backend.repository.projection.ChartDataProjection> countVisitsGroupedByDay(
+                    @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+    @Query(value = "SELECT TO_CHAR(entry_time, 'MM/YYYY') as label, COUNT(*) as value " +
+                    "FROM parking_sessions WHERE entry_time BETWEEN :from AND :to " +
+                    "GROUP BY TO_CHAR(entry_time, 'MM/YYYY') ORDER BY MIN(entry_time) ASC", nativeQuery = true)
+    List<com.smartparking.backend.repository.projection.ChartDataProjection> countVisitsGroupedByMonth(
+                    @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 }

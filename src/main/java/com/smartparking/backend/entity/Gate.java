@@ -9,7 +9,11 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "gates")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Gate {
 
     @Id
@@ -18,6 +22,7 @@ public class Gate {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "building_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
     private Building building;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -45,11 +50,11 @@ public class Gate {
     private LocalDateTime createdAt;
 
     public enum GateType {
-        MAIN_ENTRY,   // Cổng chính - vào
-        MAIN_EXIT,    // Cổng chính - ra
-        MAIN_BOTH,    // Cổng chính - vào + ra
-        ZONE_ENTRY,   // Cổng tầng - vào khu
-        ZONE_EXIT,    // Cổng tầng - ra khu
-        ZONE_BOTH     // Cổng tầng - vào + ra khu
+        MAIN_ENTRY, // Cổng chính - vào
+        MAIN_EXIT, // Cổng chính - ra
+        MAIN_BOTH, // Cổng chính - vào + ra
+        ZONE_ENTRY, // Cổng tầng - vào khu
+        ZONE_EXIT, // Cổng tầng - ra khu
+        ZONE_BOTH // Cổng tầng - vào + ra khu
     }
 }

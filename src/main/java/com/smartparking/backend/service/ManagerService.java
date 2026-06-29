@@ -32,15 +32,15 @@ public class ManagerService {
 
     // Cập nhật Constructor để Spring tự động tiêm (inject) các Repository vào
     public ManagerService(PaymentRepository paymentRepository,
-                          ParkingSessionRepository parkingSessionRepository,
-                          ZoneRepository zoneRepository,
-                          ExceptionLogRepository exceptionLogRepository,
-                          BuildingRepository buildingRepository,
-                          FloorRepository floorRepository,
-                          VehicleTypeRepository vehicleTypeRepository,
-                          PricingRuleRepository pricingRuleRepository,
-                          GateRepository gateRepository,
-                          ParkingSessionService parkingSessionService) {
+            ParkingSessionRepository parkingSessionRepository,
+            ZoneRepository zoneRepository,
+            ExceptionLogRepository exceptionLogRepository,
+            BuildingRepository buildingRepository,
+            FloorRepository floorRepository,
+            VehicleTypeRepository vehicleTypeRepository,
+            PricingRuleRepository pricingRuleRepository,
+            GateRepository gateRepository,
+            ParkingSessionService parkingSessionService) {
         this.paymentRepository = paymentRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
@@ -282,7 +282,6 @@ public class ManagerService {
                 .build();
     }
 
-
     public FloorOccupancyResponse getFloorOccupancy(UUID id) {
 
         Floor floor = floorRepository.findById(id)
@@ -489,10 +488,12 @@ public class ManagerService {
     }
 
     /*
-    =============================================================================================================
-                                             DASHBOARD STATS (from staff-history)
-    =============================================================================================================
-    */
+     * =============================================================================
+     * ================================
+     * DASHBOARD STATS (from staff-history)
+     * =============================================================================
+     * ================================
+     */
     public Map<String, Object> getDashboardStats() {
         return parkingSessionService.getDashboardStats();
     }

@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -27,6 +29,7 @@ public class Gate {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "zone_id")
+    @JsonIgnoreProperties({ "hibernateLazyInitializer", "handler" })
     private Zone zone; // Zone tương ứng của cổng (cho cổng Zone phụ)
 
     @Column(name = "gate_code", nullable = false, length = 20)

@@ -17,37 +17,41 @@ import java.util.UUID;
 
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
-    List<Payment> findByReferenceTypeAndReferenceId(String referenceType, UUID referenceId);
-    Optional<Payment> findByTransactionId(String transactionId);
+        List<Payment> findByReferenceTypeAndReferenceId(String referenceType, UUID referenceId);
 
-    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = :status AND p.paidAt BETWEEN :from AND :to")
-    BigDecimal sumAmountByStatusAndPaidAtBetween(
-            @Param("status") Payment.PaymentStatus status,
-            @Param("from") LocalDateTime from,
-            @Param("to") LocalDateTime to
-    );
+        Optional<Payment> findByTransactionId(String transactionId);
 
-    @Query(value = "SELECT TO_CHAR(paid_at, 'HH24:00') as label, SUM(amount) as value " +
-            "FROM payments WHERE status = 'COMPLETED' AND paid_at BETWEEN :from AND :to " +
-            "GROUP BY TO_CHAR(paid_at, 'HH24:00') ORDER BY label ASC", nativeQuery = true)
-    List<ChartDataProjection> sumRevenueGroupedByHour(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+        @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = :status AND p.paidAt BETWEEN :from AND :to")
+        BigDecimal sumAmountByStatusAndPaidAtBetween(
+                        @Param("status") Payment.PaymentStatus status,
+                        @Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT TO_CHAR(paid_at, 'DD/MM') as label, SUM(amount) as value " +
-            "FROM payments WHERE status = 'COMPLETED' AND paid_at BETWEEN :from AND :to " +
-            "GROUP BY TO_CHAR(paid_at, 'DD/MM') ORDER BY MIN(paid_at) ASC", nativeQuery = true)
-    List<ChartDataProjection> sumRevenueGroupedByDay(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+        @Query(value = "SELECT TO_CHAR(paid_at, 'HH24:00') as label, SUM(amount) as value " +
+                        "FROM payments WHERE status = 'COMPLETED' AND paid_at BETWEEN :from AND :to " +
+                        "GROUP BY TO_CHAR(paid_at, 'HH24:00') ORDER BY label ASC", nativeQuery = true)
+        List<ChartDataProjection> sumRevenueGroupedByHour(@Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT TO_CHAR(paid_at, 'MM/YYYY') as label, SUM(amount) as value " +
-            "FROM payments WHERE status = 'COMPLETED' AND paid_at BETWEEN :from AND :to " +
-            "GROUP BY TO_CHAR(paid_at, 'MM/YYYY') ORDER BY MIN(paid_at) ASC", nativeQuery = true)
-    List<ChartDataProjection> sumRevenueGroupedByMonth(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+        @Query(value = "SELECT TO_CHAR(paid_at, 'DD/MM') as label, SUM(amount) as value " +
+                        "FROM payments WHERE status = 'COMPLETED' AND paid_at BETWEEN :from AND :to " +
+                        "GROUP BY TO_CHAR(paid_at, 'DD/MM') ORDER BY MIN(paid_at) ASC", nativeQuery = true)
+        List<ChartDataProjection> sumRevenueGroupedByDay(@Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
 
-    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = com.smartparking.backend.entity.Payment.PaymentStatus.COMPLETED AND p.paidAt >= :start AND p.paidAt < :end")
-    BigDecimal sumCompletedPaymentsBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+        @Query(value = "SELECT TO_CHAR(paid_at, 'MM/YYYY') as label, SUM(amount) as value " +
+                        "FROM payments WHERE status = 'COMPLETED' AND paid_at BETWEEN :from AND :to " +
+                        "GROUP BY TO_CHAR(paid_at, 'MM/YYYY') ORDER BY MIN(paid_at) ASC", nativeQuery = true)
+        List<ChartDataProjection> sumRevenueGroupedByMonth(@Param("from") LocalDateTime from,
+                        @Param("to") LocalDateTime to);
 
-    // Lấy danh sách payment trong khoảng thời gian (dùng để nhóm theo ngày/tháng/năm ở Service)
-    List<Payment> findByPaidAtBetween(LocalDateTime from, LocalDateTime to);
+        @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = com.smartparking.backend.entity.Payment.PaymentStatus.COMPLETED AND p.paidAt >= :start AND p.paidAt < :end")
+        BigDecimal sumCompletedPaymentsBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    // Phân trang danh sách payment
-    Page<Payment> findAll(Pageable pageable);
+        // Lấy danh sách payment trong khoảng thời gian (dùng để nhóm theo
+        // ngày/tháng/năm ở Service)
+        List<Payment> findByPaidAtBetween(LocalDateTime from, LocalDateTime to);
+
+        // Phân trang danh sách payment
+        Page<Payment> findAll(Pageable pageable);
 }

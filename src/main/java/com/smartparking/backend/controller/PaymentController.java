@@ -73,7 +73,7 @@ public class PaymentController {
     }
 
     @GetMapping("/vnpay-return")
-    @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
+    @Transactional
     @Operation(summary = "VNPay redirect callback (user returns from VNPay)")
     public ResponseEntity<ApiResponse<Map<String, Object>>> vnpayReturn(HttpServletRequest request) {
         Map<String, String> params = vnPayService.extractParams(request);
@@ -109,10 +109,9 @@ public class PaymentController {
         }
 
         String orderCode = params.get("vnp_TxnRef");
-        Payment payment = paymentRepository.findAll().stream()
-                .filter(p -> orderCode != null && orderCode.equals(p.getTransactionId()))
-                .findFirst()
-                .orElse(null);
+        Payment payment = orderCode == null
+                ? null
+                : paymentRepository.findByTransactionId(orderCode).orElse(null);
 
         if (payment == null) {
             response.put("success", false);

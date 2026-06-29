@@ -2,6 +2,8 @@ package com.smartparking.backend.repository;
 
 import com.smartparking.backend.entity.ExceptionLog;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -17,4 +19,7 @@ public interface ExceptionLogRepository extends JpaRepository<ExceptionLog, UUID
 
     // Lấy sự cố trong khoảng thời gian
     List<ExceptionLog> findByCreatedAtBetween(LocalDateTime from, LocalDateTime to);
+
+    @Query("SELECT COUNT(e) FROM ExceptionLog e WHERE e.createdAt >= :start AND e.createdAt < :end")
+    long countExceptionsBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

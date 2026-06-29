@@ -41,6 +41,7 @@ public class PricingRule {
     @Column(name = "price_per_unit", nullable = false, precision = 10, scale = 2)
     private BigDecimal pricePerUnit; // Giá mỗi giờ/ngày/tháng
 
+    @Builder.Default
     @Column(name = "free_minutes")
     private Integer freeMinutes = 0; // Số phút miễn phí đầu tiên
 

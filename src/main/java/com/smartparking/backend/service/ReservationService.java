@@ -1,5 +1,6 @@
 package com.smartparking.backend.service;
 
+import com.smartparking.backend.entity.UserLicensePlate;
 import com.smartparking.backend.dto.request.ReservationRequest;
 import com.smartparking.backend.dto.response.ReservationResponse;
 import com.smartparking.backend.entity.Reservation;
@@ -15,26 +16,16 @@ import com.smartparking.backend.repository.ZoneRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.smartparking.backend.util.LicensePlateUtil;
+import com.smartparking.backend.entity.ParkingSession;
+import com.smartparking.backend.repository.ParkingSessionRepository;
 
+import java.util.concurrent.ThreadLocalRandom;
+import java.sql.Driver;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * ReservationService — Đặt giữ chỗ zone (Quảng phụ trách)
- *
- * TODO (Quảng): Implement các method sau:
- * 1. createReservation(user, request)  → Validate zone còn chỗ → Tăng reservedCount → Tạo reservation
- * 2. getUserReservations(user)         → Lấy danh sách reservation theo user
- * 3. cancelReservation(user, id)       → Hủy reservation → Giảm reservedCount
- *
- * Lưu ý:
- * - Kiểm tra biển số đã có reservation PENDING/CONFIRMED chưa
- * - Kiểm tra loại xe có khớp zone không
- * - Kiểm tra zone còn chỗ: currentCount + reservedCount < capacity
- * - Sinh mã reservation: "RS" + yyyyMMdd + "-" + random 4 ký tự
- */
 /**
  * ReservationService — Đặt giữ chỗ zone (Quảng phụ trách)
  *
@@ -57,16 +48,25 @@ public class ReservationService {
     private final ZoneRepository zoneRepository;
     private final VehicleTypeRepository vehicleTypeRepository;
     private final UserLicensePlateRepository userLicensePlateRepository;
+    private final BlacklistService blacklistService;
+    private final EmergencyService emergencyService;
+    private final ParkingSessionRepository parkingSessionRepository;
 
     public ReservationService(
             ReservationRepository reservationRepository,
+            ParkingSessionRepository parkingSessionRepository,
             ZoneRepository zoneRepository,
             VehicleTypeRepository vehicleTypeRepository,
-            UserLicensePlateRepository userLicensePlateRepository) {
+            UserLicensePlateRepository userLicensePlateRepository,
+            BlacklistService blacklistService,
+            EmergencyService emergencyService) {
         this.reservationRepository = reservationRepository;
+        this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
         this.vehicleTypeRepository = vehicleTypeRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
+        this.blacklistService = blacklistService;
+        this.emergencyService = emergencyService;
     }
 
     /**
@@ -90,10 +90,32 @@ public class ReservationService {
 
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy loại xe"));
+        // Nếu không phải xe đạp:
+        // - Bắt nhập biển số.
+        // - Check biển số thuộc Driver.
+        // - Check loại xe của biển số.
 
-        String licensePlate = normalizePlate(request.getLicensePlate());
+        // Nếu là xe đạp:
+        // - Không bắt nhập biển số.
+        // - Không check trong hồ sơ user_license_plates.
+        // - Tự sinh mã 4 số.
+        boolean bicycleReservation = isBicycleVehicleType(vehicleType);
+        String licensePlate = bicycleReservation
+                ? resolveBicycleIdentifier(request.getLicensePlate())
+                : normalizePlate(request.getLicensePlate());
 
-        validatePlateBelongsToUser(user, licensePlate);
+        /*
+         * Quảng - Driver scope:
+         * Chỉ gọi service của role khác, không sửa service của role khác.
+         */
+        emergencyService.ensureNormalOperation();
+        blacklistService.ensurePlateNotBlacklisted(licensePlate);
+
+        if (!bicycleReservation) {
+            UserLicensePlate userPlate = validatePlateBelongsToUser(user, licensePlate);
+            validatePlateVehicleTypeMatches(userPlate, vehicleType);
+        }
+
         validateZoneMatchesVehicleType(zone, vehicleType);
         validateZoneHasAvailableSlot(zone);
         validatePlateHasNoActiveReservation(user, licensePlate);
@@ -112,11 +134,6 @@ public class ReservationService {
 
         validateReservationWindow(reservedFrom, reservedTo);
 
-        /*
-         * NOTE Quảng - Driver reservation:
-         * Chống NullPointerException nếu dữ liệu zone cũ có reservedCount = null.
-         * Nếu zone vừa đầy sau khi giữ chỗ thì đổi trạng thái sang FULL.
-         */
         int currentCount = zone.getCurrentCount() == null ? 0 : zone.getCurrentCount();
         int capacity = zone.getCapacity() == null ? 0 : zone.getCapacity();
         int newReservedCount = (zone.getReservedCount() == null ? 0 : zone.getReservedCount()) + 1;
@@ -219,13 +236,25 @@ public class ReservationService {
      * - 51F12345
      * Stream + normalize giúp test Postman không bị lệch format.
      */
-    private void validatePlateBelongsToUser(User user, String licensePlate) {
-        boolean existed = userLicensePlateRepository.findByUser(user)
+    private UserLicensePlate validatePlateBelongsToUser(User user, String licensePlate) {
+        return userLicensePlateRepository.findByUser(user)
                 .stream()
-                .anyMatch(item -> LicensePlateUtil.normalize(item.getLicensePlate()).equals(licensePlate));
+                .filter(item -> LicensePlateUtil.normalize(item.getLicensePlate()).equals(licensePlate))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("Biển số chưa được đăng ký bởi driver này"));
+    }
 
-        if (!existed) {
-            throw new BusinessException("Biển số chưa được đăng ký bởi driver này");
+    private void validatePlateVehicleTypeMatches(UserLicensePlate userPlate, VehicleType vehicleType) {
+        if (userPlate.getVehicleType() == null) {
+            throw new BusinessException(
+                    "Biển số chưa được gắn loại xe. Vui lòng cập nhật loại xe trong hồ sơ trước khi đặt chỗ");
+        }
+
+        if (!userPlate.getVehicleType().getId().equals(vehicleType.getId())) {
+            throw new BusinessException("Biển số này thuộc loại xe "
+                    + userPlate.getVehicleType().getName()
+                    + ", không phù hợp với khu "
+                    + vehicleType.getName());
         }
     }
 
@@ -295,9 +324,79 @@ public class ReservationService {
             throw new BusinessException("Không thể đặt chỗ trong quá khứ");
         }
 
+        if (reservedFrom.isAfter(now.plusHours(2))) {
+            throw new BusinessException("Chỉ có thể giữ chỗ trong vòng 2 giờ tới");
+        }
+
         if (reservedTo.isAfter(reservedFrom.plusHours(2))) {
             throw new BusinessException("Thời gian giữ chỗ tối đa là 2 giờ");
         }
+    }
+
+    /**
+     * Xe đạp không dùng biển số thật.
+     * Hệ thống chỉ dùng mã 4 số để định danh reservation/check-in.
+     */
+    private boolean isBicycleVehicleType(VehicleType vehicleType) {
+        if (vehicleType == null || vehicleType.getName() == null) {
+            return false;
+        }
+
+        return normalizeVietnameseText(vehicleType.getName()).contains("XE DAP");
+    }
+
+    private String resolveBicycleIdentifier(String input) {
+        String normalized = LicensePlateUtil.normalize(input);
+
+        if (normalized.isBlank()) {
+            return generateAvailableBicycleIdentifier();
+        }
+
+        if (!normalized.matches("^[A-Z][0-9]{3}$")) {
+            throw new BusinessException("Mã xe đạp phải gồm 1 chữ cái và 3 số. Ví dụ: B482");
+        }
+
+        if (!isBicycleIdentifierAvailable(normalized)) {
+            throw new BusinessException("Mã xe đạp đang được sử dụng, vui lòng tạo lại đặt chỗ");
+        }
+
+        return normalized;
+    }
+
+    private String generateAvailableBicycleIdentifier() {
+        for (int attempt = 0; attempt < 1000; attempt++) {
+            char letter = (char) ('A' + ThreadLocalRandom.current().nextInt(26));
+            int number = ThreadLocalRandom.current().nextInt(0, 1000);
+            String candidate = String.format("%c%03d", letter, number);
+
+            if (isBicycleIdentifierAvailable(candidate)) {
+                return candidate;
+            }
+        }
+
+        throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
+    }
+    // Xe đạp: tự sinh mã dạng 1 chữ cái + 3 số, ví dụ B482.
+    private boolean isBicycleIdentifierAvailable(String identifier) {
+        boolean hasActiveReservation = !reservationRepository.findByLicensePlateAndStatusIn(
+                identifier,
+                List.of(Reservation.ReservationStatus.PENDING, Reservation.ReservationStatus.CONFIRMED)).isEmpty();
+
+        boolean hasActiveSession = parkingSessionRepository
+                .findByLicensePlateAndStatus(identifier, ParkingSession.SessionStatus.ACTIVE)
+                .isPresent();
+
+        return !hasActiveReservation && !hasActiveSession;
+    }
+
+    private String normalizeVietnameseText(String value) {
+        String normalized = java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFD);
+        return normalized
+                .replaceAll("\\p{M}", "")
+                .replace("Đ", "D")
+                .replace("đ", "d")
+                .toUpperCase()
+                .trim();
     }
 
     /**

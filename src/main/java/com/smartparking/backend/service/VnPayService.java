@@ -32,6 +32,9 @@ public class VnPayService {
     @Value("${vnpay.return-url:http://localhost:5173/driver/payment-return}")
     private String returnUrl;
 
+    @Value("${vnpay.ipn-url:}")
+    private String ipnUrl;
+
     public String createPaymentUrl(String orderCode, BigDecimal amount, String orderInfo, HttpServletRequest request) {
         String ipAddress = request.getRemoteAddr();
         long amountInVnd = amount.longValue() * 100; // VNPay yêu cầu nhân 100
@@ -47,6 +50,9 @@ public class VnPayService {
         params.put("vnp_OrderType", "other");
         params.put("vnp_Locale", "vn");
         params.put("vnp_ReturnUrl", returnUrl);
+        if (ipnUrl != null && !ipnUrl.isBlank()) {
+            params.put("vnp_IpnUrl", ipnUrl);
+        }
         params.put("vnp_IpAddr", ipAddress);
         params.put("vnp_CreateDate", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")));
 

@@ -5,6 +5,8 @@ import com.smartparking.backend.entity.Zone;
 import com.smartparking.backend.entity.Zone.ZoneStatus;
 import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.repository.ZoneRepository;
+import com.smartparking.backend.repository.GateRepository;
+import com.smartparking.backend.entity.Gate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,9 +19,11 @@ import java.util.Comparator;
 public class ZoneSuggestionService {
 
     private final ZoneRepository zoneRepository;
+    private final GateRepository gateRepository;
 
-    public ZoneSuggestionService(ZoneRepository zoneRepository) {
+    public ZoneSuggestionService(ZoneRepository zoneRepository, GateRepository gateRepository) {
         this.zoneRepository = zoneRepository;
+        this.gateRepository = gateRepository;
     }
 
     /**
@@ -31,10 +35,18 @@ public class ZoneSuggestionService {
     @Transactional(readOnly = true)
     public Zone suggestZone(VehicleType vehicleType) {
         return zoneRepository.findAvailableZonesByVehicleType(vehicleType.getId(), ZoneStatus.ACTIVE).stream()
+                .filter(zone -> {
+                    // Tự động loại bỏ các Zone đang bị lỗi/không có cổng vào hoạt động
+                    return gateRepository.findByBuildingId(zone.getFloor().getBuilding().getId()).stream()
+                            .anyMatch(g -> g.getZone() != null
+                                    && g.getZone().getId().equals(zone.getId())
+                                    && Boolean.TRUE.equals(g.getIsActive())
+                                    && (g.getGateType() == Gate.GateType.ZONE_ENTRY || g.getGateType() == Gate.GateType.ZONE_BOTH));
+                })
                 .min(Comparator
                         .comparingInt((Zone zone) -> zone.getCurrentCount() + zone.getReservedCount())
                         .thenComparing(zone -> zone.getDistanceToGate() != null ? zone.getDistanceToGate() : Integer.MAX_VALUE))
-                .orElseThrow(() -> new BusinessException("Không còn zone phù hợp cho loại xe: " + vehicleType.getName()));
+                .orElseThrow(() -> new BusinessException("Không còn zone phù hợp hoặc tất cả các zone đều đang bảo trì cổng cho loại xe: " + vehicleType.getName()));
     }
 
     /**

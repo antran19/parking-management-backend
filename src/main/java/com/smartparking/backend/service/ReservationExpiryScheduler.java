@@ -15,7 +15,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 /**
- * ReservationExpiryScheduler — Background Job tự động hủy reservation hết hạn (Quảng phụ trách).
+ * ReservationExpiryScheduler — Background Job tự động hủy reservation hết hạn
+ * (Quảng phụ trách).
  *
  * Nhiệm vụ:
  * - Chạy mỗi 30 giây.
@@ -23,13 +24,13 @@ import java.util.List;
  * - Chuyển status sang EXPIRED.
  * - Giảm zone.reservedCount.
  * - Nếu zone đang FULL và còn chỗ thì chuyển về ACTIVE.
- 
+ * 
  * TODO (Quảng): Implement method:
  * - expireOverdueReservations() → Chạy mỗi 30 giây
- *   + Tìm reservation PENDING/CONFIRMED có reservedTo < now
- *   + Chuyển status → EXPIRED
- *   + Giảm zone.reservedCount -= 1
- *   + Nếu zone đang FULL → chuyển về ACTIVE
+ * + Tìm reservation PENDING/CONFIRMED có reservedTo < now
+ * + Chuyển status → EXPIRED
+ * + Giảm zone.reservedCount -= 1
+ * + Nếu zone đang FULL → chuyển về ACTIVE
  */
 
 @Component
@@ -42,8 +43,7 @@ public class ReservationExpiryScheduler {
 
     public ReservationExpiryScheduler(
             ReservationRepository reservationRepository,
-            ZoneRepository zoneRepository
-    ) {
+            ZoneRepository zoneRepository) {
         this.reservationRepository = reservationRepository;
         this.zoneRepository = zoneRepository;
     }
@@ -113,7 +113,6 @@ public class ReservationExpiryScheduler {
         log.info(
                 "Reservation {} expired. Plate: {}",
                 reservation.getReservationCode(),
-                reservation.getLicensePlate()
-        );
+                reservation.getLicensePlate());
     }
 }

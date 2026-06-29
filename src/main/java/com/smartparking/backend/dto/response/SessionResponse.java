@@ -51,4 +51,12 @@ public class SessionResponse {
     private String entryFaceImageUrl;
     private String exitPlateImageUrl;
     private String exitFaceImageUrl;
+
+    private String customerName;
+    private String passType;
+
+    private Integer wrongZoneCount;
+    private Boolean wrongZoneDetected;
+
+    private String notes;
 }

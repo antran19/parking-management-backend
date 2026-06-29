@@ -3,6 +3,7 @@ package com.smartparking.backend.controller;
 import com.smartparking.backend.dto.request.CheckInRequest;
 import com.smartparking.backend.dto.request.CheckOutRequest;
 import com.smartparking.backend.dto.request.CheckInZoneRequest;
+import com.smartparking.backend.dto.request.UpdateImagesRequest;
 import com.smartparking.backend.dto.response.ApiResponse;
 import com.smartparking.backend.dto.response.SessionResponse;
 import com.smartparking.backend.entity.User;
@@ -134,11 +135,13 @@ public class SessionController {
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<Void>> updateSessionImages(
             @PathVariable UUID sessionId,
-            @RequestBody Map<String, Object> payload) {
-        String plateUrl = (String) payload.get("plateUrl");
-        String faceUrl = (String) payload.get("faceUrl");
-        Boolean isEntry = (Boolean) payload.get("isEntry");
-        parkingSessionService.updateSessionImages(sessionId, plateUrl, faceUrl, Boolean.TRUE.equals(isEntry));
+            @Valid @RequestBody UpdateImagesRequest request) {
+        parkingSessionService.updateSessionImages(
+                sessionId, 
+                request.getPlateUrl(), 
+                request.getFaceUrl(), 
+                Boolean.TRUE.equals(request.getIsEntry())
+        );
         return ResponseEntity.ok(ApiResponse.success("Cập nhật ảnh thành công", null));
     }
 

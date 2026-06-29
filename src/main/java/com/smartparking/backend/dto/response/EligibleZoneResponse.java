@@ -16,4 +16,6 @@ public class EligibleZoneResponse {
     private Integer currentCount;
     private Integer reservedCount;
     private Integer priority;          // 1, 2, 3...
+    private Boolean isMaintenance;
+    private Boolean isSelectable;
 }

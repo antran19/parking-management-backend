@@ -20,6 +20,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.data.domain.Page;
+import com.smartparking.backend.entity.Reservation;
+import com.smartparking.backend.entity.ParkingPass;
+import com.smartparking.backend.repository.ReservationRepository;
+import com.smartparking.backend.repository.ParkingPassRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -48,14 +52,20 @@ public class SessionController {
     private final ParkingSessionService parkingSessionService;
     private final UserRepository userRepository;
     private final UserLicensePlateRepository userLicensePlateRepository;
+    private final ReservationRepository reservationRepository;
+    private final ParkingPassRepository parkingPassRepository;
 
     public SessionController(
             ParkingSessionService parkingSessionService,
             UserRepository userRepository,
-            UserLicensePlateRepository userLicensePlateRepository) {
+            UserLicensePlateRepository userLicensePlateRepository,
+            ReservationRepository reservationRepository,
+            ParkingPassRepository parkingPassRepository) {
         this.parkingSessionService = parkingSessionService;
         this.userRepository = userRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
+        this.reservationRepository = reservationRepository;
+        this.parkingPassRepository = parkingPassRepository;
     }
 
     /**
@@ -127,7 +137,7 @@ public class SessionController {
     }
 
     /**
-    /**
+     * /**
      * Cập nhật URL ảnh lên phiên đỗ xe (sau khi Check-in/Check-out thành công).
      */
     @PutMapping("/staff/sessions/{sessionId}/images")
@@ -143,12 +153,12 @@ public class SessionController {
     }
 
     // /**
-    //  * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân
-    //  * trang và tìm kiếm).
-    //  */
-    //  * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân
-    //  * trang và tìm kiếm).
-    //  */
+    // * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân
+    // * trang và tìm kiếm).
+    // */
+    // * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân
+    // * trang và tìm kiếm).
+    // */
     @GetMapping("/staff/sessions/history")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<?>> getSessionsHistory(
@@ -233,7 +243,7 @@ public class SessionController {
     private String ensureDriverCanReadPlate(Authentication authentication, String rawPlate) {
         String normalizedPlate = LicensePlateUtil.normalize(rawPlate);
         if (normalizedPlate.isBlank()) {
-            throw new BusinessException("Biển số không được để trống");
+            throw new BusinessException("Biển số hoặc mã xe không được để trống");
         }
 
         if (authentication == null || authentication.getName() == null) {
@@ -242,6 +252,7 @@ public class SessionController {
 
         boolean isDriver = authentication.getAuthorities().stream()
                 .anyMatch(authority -> "ROLE_DRIVER".equals(authority.getAuthority()));
+
         boolean hasElevatedRole = authentication.getAuthorities().stream()
                 .anyMatch(authority -> "ROLE_STAFF".equals(authority.getAuthority())
                         || "ROLE_MANAGER".equals(authority.getAuthority())
@@ -257,8 +268,20 @@ public class SessionController {
                     .map(LicensePlateUtil::normalize)
                     .anyMatch(normalizedPlate::equals);
 
-            if (!plateBelongsToUser) {
-                throw new BusinessException("Bạn không có quyền xem phiên gửi xe của biển số này");
+            boolean identifierBelongsToReservation = reservationRepository.findByUserOrderByCreatedAtDesc(currentUser)
+                    .stream()
+                    .map(Reservation::getLicensePlate)
+                    .map(LicensePlateUtil::normalize)
+                    .anyMatch(normalizedPlate::equals);
+
+            boolean identifierBelongsToPass = parkingPassRepository.findByUser(currentUser)
+                    .stream()
+                    .map(ParkingPass::getLicensePlate)
+                    .map(LicensePlateUtil::normalize)
+                    .anyMatch(normalizedPlate::equals);
+
+            if (!plateBelongsToUser && !identifierBelongsToReservation && !identifierBelongsToPass) {
+                throw new BusinessException("Bạn không có quyền xem phiên gửi xe của mã xe này");
             }
         }
 

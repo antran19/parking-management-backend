@@ -163,7 +163,7 @@ public class SessionController {
     // * trang và tìm kiếm).
     // */
     @GetMapping("/staff/sessions/history")
-    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN', 'SECURITY')")
     public ResponseEntity<ApiResponse<?>> getSessionsHistory(
             @RequestParam(value = "page", required = false) Integer page,
             @RequestParam(value = "size", required = false) Integer size,
@@ -222,6 +222,21 @@ public class SessionController {
             @RequestParam("plate") String licensePlate) {
         String readablePlate = ensureDriverCanReadPlate(authentication, licensePlate);
         SessionResponse response = parkingSessionService.getActiveSession(readablePlate);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    /**
+     * Xem session đang hoạt động dành cho Staff tra cứu (không bị giới hạn biển số xe như Driver)
+     */
+    @GetMapping("/staff/sessions/active")
+    @PreAuthorize("hasAnyRole('STAFF', 'SECURITY', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<SessionResponse>> getStaffActiveSession(
+            @RequestParam("plate") String licensePlate) {
+        String normalizedPlate = LicensePlateUtil.normalize(licensePlate);
+        if (normalizedPlate.isBlank()) {
+            throw new BusinessException("Biển số không được để trống");
+        }
+        SessionResponse response = parkingSessionService.getActiveSession(normalizedPlate);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

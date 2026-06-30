@@ -39,7 +39,6 @@ public class BlacklistService {
     private final UserRepository userRepository;
     private final GateRepository gateRepository;
     private final SimpMessagingTemplate messagingTemplate;
-
     // Tiêm phụ thuộc qua Constructor (Bắt buộc)
     public BlacklistService(BlacklistPlateRepository blacklistPlateRepository,
             UserRepository userRepository,
@@ -86,6 +85,7 @@ public class BlacklistService {
                 .normalizedPlate(normalizedPlate)
                 .reason(request.getReason())
                 .description(request.getDescription())
+                .imageUrls(request.getImageUrls())
                 .isActive(true)
                 .addedBy(addedBy)
                 .build();
@@ -96,6 +96,46 @@ public class BlacklistService {
         broadcastBlacklistUpdate("ADDED", response);
 
         log.info("Đã thêm vào Blacklist: {} bởi {}", request.getLicensePlate(), addedBy.getEmail());
+        return response;
+    }
+
+    /**
+     * Cập nhật thông tin một bản ghi blacklist (biển số, lý do, mô tả)
+     * PUT /api/v1/security/blacklist/{id}
+     */
+    @Transactional
+    public BlacklistPlateResponse updateBlacklist(UUID id, BlacklistPlateRequest request) {
+        BlacklistPlate plate = blacklistPlateRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Không tìm thấy bản ghi blacklist"));
+
+        // Cập nhật biển số (nếu có thay đổi)
+        if (request.getLicensePlate() != null && !request.getLicensePlate().isBlank()) {
+            String newNormalized = LicensePlateUtil.normalize(request.getLicensePlate());
+            // Kiểm tra xem biển số mới có trùng với bản ghi blacklist khác đang active không
+            boolean conflict = blacklistPlateRepository
+                    .existsByNormalizedPlateAndIsActiveTrue(newNormalized)
+                    && !newNormalized.equals(plate.getNormalizedPlate());
+            if (conflict) {
+                throw new BusinessException("Biển số xe này đã nằm trong blacklist từ trước");
+            }
+            plate.setLicensePlate(request.getLicensePlate());
+            plate.setNormalizedPlate(newNormalized);
+        }
+
+        // Cập nhật lý do và mô tả
+        if (request.getReason() != null) {
+            plate.setReason(request.getReason());
+        }
+        if (request.getDescription() != null) {
+            plate.setDescription(request.getDescription());
+        }
+        if (request.getImageUrls() != null) {
+            plate.setImageUrls(request.getImageUrls());
+        }
+
+        BlacklistPlateResponse response = toResponse(blacklistPlateRepository.save(plate));
+        broadcastBlacklistUpdate("UPDATED", response);
+        log.info("Đã cập nhật Blacklist id={}: {}", id, plate.getLicensePlate());
         return response;
     }
 
@@ -199,6 +239,7 @@ public class BlacklistService {
                 .normalizedPlate(blacklistPlate.getNormalizedPlate())
                 .reason(blacklistPlate.getReason())
                 .description(blacklistPlate.getDescription())
+                .imageUrls(blacklistPlate.getImageUrls())
                 .isActive(blacklistPlate.getIsActive())
                 .addedBy(addedBy != null ? addedBy.getFullName() : null)
                 .addedAt(blacklistPlate.getAddedAt())

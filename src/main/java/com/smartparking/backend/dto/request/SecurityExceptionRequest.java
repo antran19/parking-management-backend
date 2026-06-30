@@ -4,6 +4,7 @@ import com.smartparking.backend.entity.ExceptionLog.ExceptionType;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -17,4 +18,6 @@ public class SecurityExceptionRequest {
     private String description;
     private String licensePlate;
     private UUID handledByUserId;
+    private List<String> imageUrls;
+    private String status;
 }

@@ -1,5 +1,6 @@
 package com.smartparking.backend.service;
 
+import com.smartparking.backend.dto.response.ExceptionLogResponse;
 import com.smartparking.backend.dto.response.*;
 import com.smartparking.backend.entity.*;
 import com.smartparking.backend.entity.ExceptionLog.ExceptionType;
@@ -392,6 +393,37 @@ public class ManagerService {
                 .build();
     }
 
+    public List<ExceptionLogResponse> getSecurityIncidents(LocalDateTime from, LocalDateTime to) {
+        List<ExceptionLog> logs;
+        if (from != null && to != null)
+            logs = exceptionLogRepository.findByCreatedAtBetween(from, to);
+        else
+            logs = exceptionLogRepository.findAll();
+
+        return logs.stream()
+                .map(this::mapToExceptionLogResponse)
+                .collect(Collectors.toList());
+    }
+
+    public ExceptionLogResponse getSecurityIncidentDetail(UUID id) {
+        ExceptionLog log = exceptionLogRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Sự cố không tồn tại"));
+        return mapToExceptionLogResponse(log);
+    }
+
+    private ExceptionLogResponse mapToExceptionLogResponse(ExceptionLog log) {
+        return ExceptionLogResponse.builder()
+                .id(log.getId())
+                .sessionId(log.getSession() != null ? log.getSession().getId() : null)
+                .licensePlate(log.getLicensePlate())
+                .exceptionType(log.getExceptionType() != null ? log.getExceptionType().name() : null)
+                .description(log.getDescription())
+                .handledBy(log.getHandledBy() != null ? log.getHandledBy().getFullName() : null)
+                .resolvedAt(log.getResolvedAt())
+                .createdAt(log.getCreatedAt())
+                .build();
+    }
+
     private Map<String, Long> classifySecurityIncidents(List<ExceptionLog> logs) {
         Map<String, Long> byType = new LinkedHashMap<>();
         for (ExceptionType type : ExceptionType.values()) {
@@ -405,6 +437,10 @@ public class ManagerService {
 
         return byType;
     }
+
+
+
+
 
     /*
      * =============================================================================

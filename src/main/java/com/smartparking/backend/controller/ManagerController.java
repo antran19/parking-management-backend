@@ -1,6 +1,7 @@
 package com.smartparking.backend.controller;
 
 import com.smartparking.backend.dto.response.*;
+import com.smartparking.backend.dto.response.ExceptionLogResponse;
 import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.service.BlacklistService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -114,6 +115,18 @@ public class ManagerController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
         return ResponseEntity.ok(ApiResponse.success(managerService.getSecuritySummary(from, to)));
+    }
+
+    @GetMapping("/security/incidents")
+    public ResponseEntity<ApiResponse<List<ExceptionLogResponse>>> getSecurityIncidents(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
+        return ResponseEntity.ok(ApiResponse.success(managerService.getSecurityIncidents(from, to)));
+    }
+
+    @GetMapping("/security/incidents/{id}")
+    public ResponseEntity<ApiResponse<ExceptionLogResponse>> getSecurityIncidentDetail(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(managerService.getSecurityIncidentDetail(id)));
     }
 
     @GetMapping("/blacklist")

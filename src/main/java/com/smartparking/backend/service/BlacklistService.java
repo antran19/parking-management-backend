@@ -100,6 +100,34 @@ public class BlacklistService {
     }
 
     /**
+     * Gỡ bỏ một biển số khỏi danh sách đen (Blacklist)
+     */
+    @Transactional
+    public BlacklistPlateResponse removeFromBlacklist(UUID id, BlacklistRemoveRequest request) {
+        BlacklistPlate plate = blacklistPlateRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Không tìm thấy thông tin blacklist"));
+
+        if (!plate.getIsActive()) {
+            throw new BusinessException("Biển số này đã được gỡ cấm từ trước");
+        }
+
+        User removedBy = userRepository.findById(request.getRemovedByUserId())
+                .orElseThrow(() -> new BusinessException("Người thực hiện gỡ cấm không tồn tại"));
+
+        plate.setIsActive(false);
+        plate.setRemovedBy(removedBy);
+        plate.setRemovedAt(LocalDateTime.now());
+
+        BlacklistPlateResponse response = toResponse(blacklistPlateRepository.save(plate));
+
+        // Phát sự kiện qua WebSocket báo có biển số được gỡ
+        broadcastBlacklistUpdate("REMOVED", response);
+
+        log.info("Đã gỡ khỏi Blacklist: {} bởi {}", plate.getLicensePlate(), removedBy.getEmail());
+        return response;
+    }
+
+    /**
      * [HÀM THÊM MỚI SO VỚI DỰ ÁN CŨ]
      * Kiểm tra nhanh xem một biển số xe có đang bị chặn (nằm trong blacklist và
      * active) hay không.

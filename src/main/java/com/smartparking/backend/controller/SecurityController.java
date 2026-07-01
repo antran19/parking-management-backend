@@ -1,6 +1,7 @@
 package com.smartparking.backend.controller;
 
 import com.smartparking.backend.dto.request.BlacklistPlateRequest;
+import com.smartparking.backend.dto.request.BlacklistRemoveRequest;
 import com.smartparking.backend.dto.request.EmergencyActivateRequest;
 import com.smartparking.backend.dto.request.EmergencyDeactivateRequest;
 import com.smartparking.backend.dto.request.SecurityExceptionRequest;
@@ -211,6 +212,19 @@ public class SecurityController {
             @Valid @RequestBody BlacklistPlateRequest request) {
         BlacklistPlateResponse response = blacklistService.addToBlacklist(request);
         return ResponseEntity.ok(ApiResponse.success("Đã thêm biển số vào danh sách đen", response));
+    }
+
+    /**
+     * Gỡ bỏ một biển số xe khỏi danh sách đen
+     * DELETE /api/v1/security/blacklist/{id}
+     */
+    @DeleteMapping("/blacklist/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<ApiResponse<BlacklistPlateResponse>> removeBlacklistPlate(
+            @PathVariable UUID id,
+            @Valid @RequestBody BlacklistRemoveRequest request) {
+        BlacklistPlateResponse response = blacklistService.removeFromBlacklist(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Đã gỡ biển số khỏi danh sách đen", response));
     }
 
 }

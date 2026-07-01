@@ -43,6 +43,7 @@ import com.smartparking.backend.repository.UserLicensePlateRepository;
 import com.smartparking.backend.repository.UserRepository;
 import com.smartparking.backend.repository.VehicleTypeRepository;
 import com.smartparking.backend.service.VnPayService;
+import com.smartparking.backend.service.UniqueCodeGeneratorService;
 import com.smartparking.backend.util.LicensePlateUtil;
 
 import jakarta.validation.Valid;
@@ -83,6 +84,7 @@ public class DriverController {
     private final VehicleTypeRepository vehicleTypeRepository;
     private final PaymentRepository paymentRepository;
     private final VnPayService vnPayService;
+    private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
 
     public DriverController(
             UserRepository userRepository,
@@ -94,7 +96,8 @@ public class DriverController {
             VehicleTypeRepository vehicleTypeRepository,
             PaymentRepository paymentRepository,
             ParkingSessionRepository parkingSessionRepository,
-            VnPayService vnPayService) {
+            VnPayService vnPayService,
+            UniqueCodeGeneratorService uniqueCodeGeneratorService) {
         this.userRepository = userRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
         this.pricingRuleRepository = pricingRuleRepository;
@@ -105,6 +108,7 @@ public class DriverController {
         this.paymentRepository = paymentRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.vnPayService = vnPayService;
+        this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
     }
 
     /**
@@ -378,7 +382,7 @@ public class DriverController {
                 .building(building)
                 .vehicleType(vehicleType)
                 .licensePlate(licensePlate)
-                .qrCode("PASS-" + UUID.randomUUID())
+                .parkingPassCode(uniqueCodeGeneratorService.generateParkingPassCode())
                 .startDate(startDate)
                 .endDate(endDate)
                 .passType(request.getPassType())
@@ -557,7 +561,7 @@ public class DriverController {
         item.put("vehicleTypeName", pass.getVehicleType() != null ? pass.getVehicleType().getName() : null);
 
         item.put("licensePlate", pass.getLicensePlate());
-        item.put("qrCode", pass.getQrCode());
+        item.put("parkingPassCode", pass.getParkingPassCode());
         item.put("startDate", pass.getStartDate());
         item.put("endDate", pass.getEndDate());
         item.put("passType", pass.getPassType());
@@ -683,8 +687,8 @@ public class DriverController {
             return generateAvailableBicycleIdentifier();
         }
 
-        if (!normalized.matches("^[A-Z][0-9]{3}$")) {
-            throw new BusinessException("Mã xe đạp phải gồm 1 chữ cái và 3 số. Ví dụ: B482");
+        if (!normalized.matches("^BC\\d{6}-\\d{4}$")) {
+            throw new BusinessException("Mã xe đạp phải có định dạng BCyymmdd-nnnn. Ví dụ: BC260701-0001");
         }
 
         if (!isBicycleIdentifierAvailable(normalized)) {
@@ -695,17 +699,7 @@ public class DriverController {
     }
 
     private String generateAvailableBicycleIdentifier() {
-        for (int attempt = 0; attempt < 1000; attempt++) {
-            char letter = (char) ('A' + ThreadLocalRandom.current().nextInt(26));
-            int number = ThreadLocalRandom.current().nextInt(0, 1000);
-            String candidate = String.format("%c%03d", letter, number);
-
-            if (isBicycleIdentifierAvailable(candidate)) {
-                return candidate;
-            }
-        }
-
-        throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
+        return uniqueCodeGeneratorService.generateBicycleIdentifier();
     }
 
     /**

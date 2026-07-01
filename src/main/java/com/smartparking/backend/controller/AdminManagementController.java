@@ -4,6 +4,7 @@ import com.smartparking.backend.dto.response.ApiResponse;
 import com.smartparking.backend.entity.*;
 import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.repository.*;
+import com.smartparking.backend.service.UniqueCodeGeneratorService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -45,6 +46,7 @@ public class AdminManagementController {
     private final PaymentRepository paymentRepository;
     private final SystemSettingsRepository systemSettingsRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
 
     public AdminManagementController(UserRepository userRepository,
                                      ZoneRepository zoneRepository,
@@ -56,7 +58,8 @@ public class AdminManagementController {
                                      ParkingPassRepository parkingPassRepository,
                                      PaymentRepository paymentRepository,
                                      SystemSettingsRepository systemSettingsRepository,
-                                     PasswordEncoder passwordEncoder) {
+                                     PasswordEncoder passwordEncoder,
+                                     UniqueCodeGeneratorService uniqueCodeGeneratorService) {
         this.userRepository = userRepository;
         this.zoneRepository = zoneRepository;
         this.floorRepository = floorRepository;
@@ -68,6 +71,7 @@ public class AdminManagementController {
         this.paymentRepository = paymentRepository;
         this.systemSettingsRepository = systemSettingsRepository;
         this.passwordEncoder = passwordEncoder;
+        this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -358,7 +362,7 @@ public class AdminManagementController {
                 .building(building)
                 .vehicleType(vehicleType)
                 .licensePlate(text(body, "licensePlate").toUpperCase().replaceAll("\\s+", ""))
-                .qrCode("PASS-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                .parkingPassCode(uniqueCodeGeneratorService.generateParkingPassCode())
                 .startDate(LocalDate.parse(text(body, "startDate")))
                 .endDate(LocalDate.parse(text(body, "endDate")))
                 .passType(ParkingPass.PassType.valueOf(textOrDefault(body, "passType", "MONTHLY").toUpperCase()))
@@ -571,7 +575,7 @@ public class AdminManagementController {
         map.put("vehicleTypeId", pass.getVehicleType().getId());
         map.put("vehicleTypeName", pass.getVehicleType().getName());
         map.put("licensePlate", pass.getLicensePlate());
-        map.put("qrCode", pass.getQrCode());
+        map.put("parkingPassCode", pass.getParkingPassCode());
         map.put("startDate", pass.getStartDate());
         map.put("endDate", pass.getEndDate());
         map.put("passType", pass.getPassType().name());

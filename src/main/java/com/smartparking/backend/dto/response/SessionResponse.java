@@ -73,10 +73,14 @@ public class SessionResponse {
     // Thông tin khách / vé
     private String customerName;
     private String passType;
+    private String reservationCode;
 
     // Sai zone
     private Integer wrongZoneCount;
     private Boolean wrongZoneDetected;
 
     private String notes;
+
+    // Danh sách phân khu khả dụng (gửi kèm khi ở chế độ preview/tìm kiếm)
+    private java.util.List<EligibleZoneResponse> eligibleZones;
 }

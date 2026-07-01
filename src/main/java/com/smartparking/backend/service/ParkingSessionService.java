@@ -67,6 +67,7 @@ public class ParkingSessionService {
     private final EmergencyEventRepository emergencyEventRepository;
     private final ZoneRepository zoneRepository;
     private final UserLicensePlateRepository userLicensePlateRepository;
+    private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
 
     public ParkingSessionService(
             ParkingSessionRepository sessionRepository,
@@ -84,7 +85,8 @@ public class ParkingSessionService {
             ExceptionLogRepository exceptionLogRepository,
             EmergencyEventRepository emergencyEventRepository,
             ZoneRepository zoneRepository,
-            UserLicensePlateRepository userLicensePlateRepository) {
+            UserLicensePlateRepository userLicensePlateRepository,
+            UniqueCodeGeneratorService uniqueCodeGeneratorService) {
         this.sessionRepository = sessionRepository;
         this.zoneSuggestionService = zoneSuggestionService;
         this.pricingService = pricingService;
@@ -101,6 +103,7 @@ public class ParkingSessionService {
         this.emergencyEventRepository = emergencyEventRepository;
         this.zoneRepository = zoneRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
+        this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -256,28 +259,15 @@ public class ParkingSessionService {
             }
         }
 
-        if (reservation != null) {
+        // Bước 4: Xử lý gán Zone đỗ xe
+        if (request.getZoneId() != null) {
+            assignedZone = zoneRepository.findById(request.getZoneId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Phân khu được chọn không tồn tại"));
+        } else if (reservation != null) {
             assignedZone = reservation.getZone();
-            // Đổi chỗ từ reservedCount sang currentCount
-            if (assignedZone.getReservedCount() > 0) {
-                assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
-            }
-            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
         } else {
-            // Trường hợp khách vãng lai hoặc thuê bao tháng thông thường
             assignedZone = zoneSuggestionService.suggestZone(vehicleType);
-            // Cộng trực tiếp currentCount của Zone được gợi ý
-            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
         }
-
-        // Cập nhật trạng thái Zone nếu đầy
-        if (assignedZone.getCurrentCount() + assignedZone.getReservedCount() >= assignedZone.getCapacity()) {
-            assignedZone.setStatus(Zone.ZoneStatus.FULL);
-        }
-        zoneRepository.save(assignedZone);
-
-        // Bước 5: Sinh mã session duy nhất
-        String sessionCode = generateSessionCode();
 
         // Xác định phân loại Driver
         ParkingSession.DriverType driverType = ParkingSession.DriverType.WALK_IN;
@@ -293,6 +283,68 @@ public class ParkingSessionService {
             }
         }
 
+        // Nếu chỉ là tìm kiếm/xem trước thông tin đỗ (isPreview = true)
+        if (Boolean.TRUE.equals(request.getIsPreview())) {
+            List<EligibleZoneResponse> eligibleZones = buildEligibleZonesForVehicleType(vehicleType.getId());
+            String pType = null;
+            String custName = null;
+            if (hasValidPass && !activePasses.isEmpty()) {
+                ParkingPass pass = activePasses.get(0);
+                pType = pass.getPassType() != null ? pass.getPassType().name() : null;
+                custName = pass.getUser() != null ? pass.getUser().getFullName() : "Thuê bao tháng";
+            }
+            return SessionResponse.builder()
+                    .licensePlate(licensePlate)
+                    .vehicleTypeId(vehicleType.getId())
+                    .vehicleType(vehicleType.getName())
+                    .driverType(driverType)
+                    .passType(pType)
+                    .customerName(custName)
+                    .reservationCode(reservation != null ? reservation.getReservationCode() : null)
+                    .zoneId(assignedZone.getId())
+                    .zoneCode(assignedZone.getZoneCode())
+                    .zoneName(assignedZone.getZoneName())
+                    .floorName(assignedZone.getFloor().getFloorName())
+                    .buildingId(mainGate.getBuilding().getId())
+                    .buildingName(mainGate.getBuilding().getName())
+                    .entryMainGateCode(mainGate.getGateCode())
+                    .entryMainGateName(mainGate.getGateName())
+                    .entryTime(LocalDateTime.now())
+                    .status(SessionStatus.ACTIVE)
+                    .eligibleZones(eligibleZones)
+                    .notes(request.getNotes())
+                    .build();
+        }
+
+        // Thực hiện lưu thật vào DB (nếu không phải preview)
+        if (request.getZoneId() != null) {
+            // Đổi chỗ từ reservedCount sang currentCount nếu là zone của reservation
+            if (reservation != null && reservation.getZone().getId().equals(assignedZone.getId())) {
+                if (assignedZone.getReservedCount() > 0) {
+                    assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
+                }
+            }
+            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
+        } else if (reservation != null) {
+            // Đổi chỗ từ reservedCount sang currentCount
+            if (assignedZone.getReservedCount() > 0) {
+                assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
+            }
+            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
+        } else {
+            // Cộng trực tiếp currentCount của Zone được gợi ý
+            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
+        }
+
+        // Cập nhật trạng thái Zone nếu đầy
+        if (assignedZone.getCurrentCount() + assignedZone.getReservedCount() >= assignedZone.getCapacity()) {
+            assignedZone.setStatus(Zone.ZoneStatus.FULL);
+        }
+        zoneRepository.save(assignedZone);
+
+        // Bước 5: Sinh mã session duy nhất
+        String sessionCode = generateSessionCode();
+
         // Bước 6: Lưu phiên đỗ xe
         ParkingSession session = ParkingSession.builder()
                 .sessionCode(sessionCode)
@@ -303,7 +355,6 @@ public class ParkingSessionService {
                 .entryMainGate(mainGate)
                 .entryTime(LocalDateTime.now())
                 .zoneEntryTime(null) // Chưa quét vào zone
-                .qrCode(sessionCode)
                 .status(SessionStatus.ACTIVE)
                 .notes(request.getNotes())
                 .build();
@@ -430,12 +481,12 @@ public class ParkingSessionService {
         if (opt.isPresent())
             return opt.get();
 
-        // 2. Tìm bằng biển số hoặc qrCode
+        // 2. Tìm bằng biển số
         return sessionRepository.findAll().stream()
                 .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
                 .filter(s -> {
                     String normPlate = s.getLicensePlate().replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-                    return normPlate.equals(cleanCode) || code.trim().equals(s.getQrCode());
+                    return normPlate.equals(cleanCode);
                 })
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -747,9 +798,7 @@ public class ParkingSessionService {
      * Ví dụ: PS20260516-A3F
      */
     private String generateSessionCode() {
-        String date = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String random = UUID.randomUUID().toString().substring(0, 3).toUpperCase();
-        return "PS" + date + "-" + random;
+        return uniqueCodeGeneratorService.generateSessionCode();
     }
 
     /**
@@ -1038,9 +1087,13 @@ public class ParkingSessionService {
             throw new BusinessException("Xe đã đi vào khu đỗ, không thể đổi phân khu");
         }
 
+        return buildEligibleZonesForVehicleType(session.getVehicleType().getId());
+    }
+
+    private List<EligibleZoneResponse> buildEligibleZonesForVehicleType(UUID vehicleTypeId) {
         // Lấy toàn bộ zone của loại phương tiện này
         List<Zone> allMatchedZones = zoneRepository.findAll().stream()
-                .filter(z -> z.getVehicleType().getId().equals(session.getVehicleType().getId()))
+                .filter(z -> z.getVehicleType().getId().equals(vehicleTypeId))
                 .filter(z -> z.getStatus() == Zone.ZoneStatus.ACTIVE || z.getStatus() == Zone.ZoneStatus.FULL)
                 .sorted((z1, z2) -> {
                     // Ưu tiên các zone có thể chọn trước
@@ -1075,11 +1128,11 @@ public class ParkingSessionService {
             int occupied = current + reserved;
 
             boolean hasActiveGate = hasActiveEntryGate(z);
-            boolean isMaintenance = z.getStatus() == Zone.ZoneStatus.MAINTENANCE 
-                    || z.getStatus() == Zone.ZoneStatus.LOCKED 
+            boolean isMaintenance = z.getStatus() == Zone.ZoneStatus.MAINTENANCE
+                    || z.getStatus() == Zone.ZoneStatus.LOCKED
                     || !hasActiveGate;
-            boolean isSelectable = z.getStatus() == Zone.ZoneStatus.ACTIVE 
-                    && hasActiveGate 
+            boolean isSelectable = z.getStatus() == Zone.ZoneStatus.ACTIVE
+                    && hasActiveGate
                     && (occupied < capacity);
 
             responseList.add(EligibleZoneResponse.builder()
@@ -1105,8 +1158,8 @@ public class ParkingSessionService {
         int reserved = zone.getReservedCount() != null ? zone.getReservedCount() : 0;
         int occupied = current + reserved;
 
-        return zone.getStatus() == Zone.ZoneStatus.ACTIVE 
-                && hasActiveEntryGate(zone) 
+        return zone.getStatus() == Zone.ZoneStatus.ACTIVE
+                && hasActiveEntryGate(zone)
                 && (occupied < capacity);
     }
 
@@ -1115,9 +1168,9 @@ public class ParkingSessionService {
             return false;
         }
         return gateRepository.findByBuildingId(zone.getFloor().getBuilding().getId()).stream()
-                .anyMatch(g -> g.getZone() != null 
-                        && g.getZone().getId().equals(zone.getId()) 
-                        && Boolean.TRUE.equals(g.getIsActive()) 
+                .anyMatch(g -> g.getZone() != null
+                        && g.getZone().getId().equals(zone.getId())
+                        && Boolean.TRUE.equals(g.getIsActive())
                         && (g.getGateType() == Gate.GateType.ZONE_ENTRY || g.getGateType() == Gate.GateType.ZONE_BOTH));
     }
 
@@ -1191,7 +1244,8 @@ public class ParkingSessionService {
 
     private void validateZoneHasEntryGate(Zone zone) {
         if (!hasActiveEntryGate(zone)) {
-            throw new BusinessException("Khu vực đỗ xe " + zone.getZoneName() + " hiện tại không thể tiếp nhận xe do chưa được cấu hình cổng vào hoạt động.");
+            throw new BusinessException("Khu vực đỗ xe " + zone.getZoneName()
+                    + " hiện tại không thể tiếp nhận xe do chưa được cấu hình cổng vào hoạt động.");
         }
     }
 
@@ -1214,14 +1268,12 @@ public class ParkingSessionService {
             return generateAvailableBicycleIdentifier();
         }
 
-        if (!normalized.matches("^[A-Z][0-9]{3}$")) {
-            throw new BusinessException("Mã xe đạp phải gồm 1 chữ cái in hoa và 3 số (Ví dụ: A123)");
+        if (!normalized.matches("^BC\\d{6}-\\d{4}$")) {
+            throw new BusinessException("Mã xe đạp phải có định dạng BCyymmdd-nnnn. Ví dụ: BC260701-0001");
         }
 
-        // Nếu khách tự cung cấp mã (VD: A123), chỉ cần đảm bảo mã đó KHÔNG CÓ XE NÀO
+        // Nếu khách tự cung cấp mã, chỉ cần đảm bảo mã đó KHÔNG CÓ XE NÀO
         // ĐANG ĐỖ (ACTIVE).
-        // Chúng ta cho phép check-in nếu mã đó đang ở trạng thái PENDING/CONFIRMED (vì
-        // khách đang check-in cho chính đặt chỗ đó).
         boolean hasActiveSession = sessionRepository
                 .findByLicensePlateAndStatus(normalized, ParkingSession.SessionStatus.ACTIVE)
                 .isPresent();
@@ -1234,16 +1286,7 @@ public class ParkingSessionService {
     }
 
     private String generateAvailableBicycleIdentifier() {
-        for (int attempt = 0; attempt < 100; attempt++) {
-            char randomLetter = (char) ('A' + ThreadLocalRandom.current().nextInt(26));
-            String randomDigits = String.format("%03d", ThreadLocalRandom.current().nextInt(1000));
-            String candidate = randomLetter + randomDigits;
-
-            if (isBicycleIdentifierAvailable(candidate)) {
-                return candidate;
-            }
-        }
-        throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
+        return uniqueCodeGeneratorService.generateBicycleIdentifier();
     }
 
     // Hàm này chỉ dùng khi hệ thống TỰ ĐỘNG SINH mã mới, để đảm bảo mã sinh ra là

@@ -29,6 +29,7 @@ public class ManagerService {
     private final PricingRuleRepository pricingRuleRepository;
     private final GateRepository gateRepository;
     private final ParkingSessionService parkingSessionService;
+    private final EmergencyService emergencyService;
 
     // Cập nhật Constructor để Spring tự động tiêm (inject) các Repository vào
     public ManagerService(PaymentRepository paymentRepository,
@@ -40,7 +41,8 @@ public class ManagerService {
             VehicleTypeRepository vehicleTypeRepository,
             PricingRuleRepository pricingRuleRepository,
             GateRepository gateRepository,
-            ParkingSessionService parkingSessionService) {
+            ParkingSessionService parkingSessionService,
+            EmergencyService emergencyService) {
         this.paymentRepository = paymentRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
@@ -51,6 +53,7 @@ public class ManagerService {
         this.pricingRuleRepository = pricingRuleRepository;
         this.gateRepository = gateRepository;
         this.parkingSessionService = parkingSessionService;
+        this.emergencyService = emergencyService;
     }
 
     /*
@@ -92,7 +95,7 @@ public class ManagerService {
         long securityIncidentsToday = todayLogs.size();
 
         // 6. activeEmergency
-        boolean activeEmergency = exceptionLogRepository.countByResolvedAtIsNull() > 0;
+        boolean activeEmergency = emergencyService.isEmergencyActive();
 
         return ManagerDashboardResponse.builder()
                 .todayRevenue(todayRevenue)
@@ -326,34 +329,41 @@ public class ManagerService {
      */
     public PaymentDetailResponse getPaymentDetail(UUID paymentId) {
         return paymentRepository.findById(paymentId)
-                .map(p -> PaymentDetailResponse.builder()
-                        .id(p.getId())
-                        .referenceType(p.getReferenceType())
-                        .referenceId(p.getReferenceId())
-                        .amount(p.getAmount())
-                        .paymentMethod(p.getPaymentMethod())
-                        .status(p.getStatus())
-                        .transactionId(p.getTransactionId())
-                        .paidAt(p.getPaidAt())
-                        .createdAt(p.getCreatedAt())
-                        .build())
+                .map(p -> buildPaymentDetailResponse(p))
                 .orElse(null);
     }
 
     public List<PaymentDetailResponse> getPayments() {
         return paymentRepository.findAll().stream()
-                .map(p -> PaymentDetailResponse.builder()
-                        .id(p.getId())
-                        .referenceType(p.getReferenceType())
-                        .referenceId(p.getReferenceId())
-                        .amount(p.getAmount())
-                        .paymentMethod(p.getPaymentMethod())
-                        .status(p.getStatus())
-                        .transactionId(p.getTransactionId())
-                        .paidAt(p.getPaidAt())
-                        .createdAt(p.getCreatedAt())
-                        .build())
+                .map(p -> buildPaymentDetailResponse(p))
                 .collect(Collectors.toList());
+    }
+
+    private PaymentDetailResponse buildPaymentDetailResponse(Payment p) {
+        PaymentDetailResponse.PaymentDetailResponseBuilder builder = PaymentDetailResponse.builder()
+                .id(p.getId())
+                .referenceType(p.getReferenceType())
+                .referenceId(p.getReferenceId())
+                .amount(p.getAmount())
+                .paymentMethod(p.getPaymentMethod())
+                .status(p.getStatus())
+                .transactionId(p.getTransactionId())
+                .paidAt(p.getPaidAt())
+                .createdAt(p.getCreatedAt());
+
+        if ("SESSION".equalsIgnoreCase(p.getReferenceType()) && p.getReferenceId() != null) {
+            parkingSessionRepository.findById(p.getReferenceId()).ifPresent(session -> {
+                builder
+                        .sessionCode(session.getSessionCode())
+                        .licensePlate(session.getLicensePlate())
+                        .vehicleTypeName(session.getVehicleType() != null ? session.getVehicleType().getName() : null)
+                        .zoneName(session.getZone() != null ? session.getZone().getZoneName() : null)
+                        .entryTime(session.getEntryTime())
+                        .exitTime(session.getExitTime());
+            });
+        }
+
+        return builder.build();
     }
 
     /*
@@ -448,21 +458,21 @@ public class ManagerService {
      * =============================================================================
      * ================================
      */
-    @Transactional
-    public Map<String, Object> createGate(Map<String, Object> body) {
-        Building building = buildingRepository.findById(uuid(body, "buildingId"))
-                .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
+    // @Transactional
+    // public Map<String, Object> createGate(Map<String, Object> body) {
+    //     Building building = buildingRepository.findById(uuid(body, "buildingId"))
+    //             .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
 
-        Gate gate = Gate.builder()
-                .building(building)
-                .gateCode(text(body, "gateCode"))
-                .gateName(text(body, "gateName"))
-                .gateType(Gate.GateType.valueOf(textOrDefault(body, "gateType", "MAIN_BOTH").toUpperCase()))
-                .isActive(true)
-                .build();
+    //     Gate gate = Gate.builder()
+    //             .building(building)
+    //             .gateCode(text(body, "gateCode"))
+    //             .gateName(text(body, "gateName"))
+    //             .gateType(Gate.GateType.valueOf(textOrDefault(body, "gateType", "MAIN_BOTH").toUpperCase()))
+    //             .isActive(true)
+    //             .build();
 
-        return gateMap(gateRepository.save(gate));
-    }
+    //     return gateMap(gateRepository.save(gate));
+    // }
 
     @Transactional
     public Map<String, Object> updateGate(UUID id, Map<String, Object> body) {
@@ -479,13 +489,13 @@ public class ManagerService {
         return gateMap(gateRepository.save(gate));
     }
 
-    @Transactional
-    public void deleteGate(UUID id) {
-        if (!gateRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Gate không tồn tại");
-        }
-        gateRepository.deleteById(id);
-    }
+    // @Transactional
+    // public void deleteGate(UUID id) {
+    //     if (!gateRepository.existsById(id)) {
+    //         throw new ResourceNotFoundException("Gate không tồn tại");
+    //     }
+    //     gateRepository.deleteById(id);
+    // }
 
     /*
      * =============================================================================

@@ -24,4 +24,12 @@ public class PaymentDetailResponse {
     private String transactionId;
     private LocalDateTime paidAt;
     private LocalDateTime createdAt;
+
+    // Session details when payment refers to a parking session
+    private String sessionCode;
+    private String licensePlate;
+    private String vehicleTypeName;
+    private String zoneName;
+    private LocalDateTime entryTime;
+    private LocalDateTime exitTime;
 }

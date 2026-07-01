@@ -2,7 +2,6 @@ package com.smartparking.backend.controller;
 
 import com.smartparking.backend.dto.response.*;
 import com.smartparking.backend.exception.ResourceNotFoundException;
-import com.smartparking.backend.dto.response.BlacklistPlateResponse;
 import com.smartparking.backend.service.BlacklistService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -155,20 +154,21 @@ public class ManagerController {
      * =============================================================================
      * ================================
      */
-    @PostMapping("/gate")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> createGate(@RequestBody Map<String, Object> body) {
-        return ResponseEntity.ok(ApiResponse.success("Đã tạo cổng", managerService.createGate(body)));
-    }
+    // @PostMapping("/gate")
+    // public ResponseEntity<ApiResponse<Map<String, Object>>> createGate(@RequestBody Map<String, Object> body) {
+    //     return ResponseEntity.ok(ApiResponse.success("Đã tạo cổng", managerService.createGate(body)));
+    // }
 
+
+    // @DeleteMapping("/gate/{id}")
+    // public ResponseEntity<ApiResponse<String>> deleteGate(@PathVariable UUID id) {
+    //     managerService.deleteGate(id);
+    //     return ResponseEntity.ok(ApiResponse.success("Đã xóa cổng", id.toString()));
+    // }
+    
     @PutMapping("/gate/{id}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateGate(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
         return ResponseEntity.ok(ApiResponse.success("Đã cập nhật cổng", managerService.updateGate(id, body)));
-    }
-
-    @DeleteMapping("/gate/{id}")
-    public ResponseEntity<ApiResponse<String>> deleteGate(@PathVariable UUID id) {
-        managerService.deleteGate(id);
-        return ResponseEntity.ok(ApiResponse.success("Đã xóa cổng", id.toString()));
     }
 
 }

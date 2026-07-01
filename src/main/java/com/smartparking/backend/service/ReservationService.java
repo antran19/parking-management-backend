@@ -51,6 +51,7 @@ public class ReservationService {
     private final BlacklistService blacklistService;
     private final EmergencyService emergencyService;
     private final ParkingSessionRepository parkingSessionRepository;
+    private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
 
     public ReservationService(
             ReservationRepository reservationRepository,
@@ -59,7 +60,8 @@ public class ReservationService {
             VehicleTypeRepository vehicleTypeRepository,
             UserLicensePlateRepository userLicensePlateRepository,
             BlacklistService blacklistService,
-            EmergencyService emergencyService) {
+            EmergencyService emergencyService,
+            UniqueCodeGeneratorService uniqueCodeGeneratorService) {
         this.reservationRepository = reservationRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
@@ -67,6 +69,7 @@ public class ReservationService {
         this.userLicensePlateRepository = userLicensePlateRepository;
         this.blacklistService = blacklistService;
         this.emergencyService = emergencyService;
+        this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
     }
 
     /**
@@ -352,8 +355,8 @@ public class ReservationService {
             return generateAvailableBicycleIdentifier();
         }
 
-        if (!normalized.matches("^[A-Z][0-9]{3}$")) {
-            throw new BusinessException("Mã xe đạp phải gồm 1 chữ cái và 3 số. Ví dụ: B482");
+        if (!normalized.matches("^BC\\d{6}-\\d{4}$")) {
+            throw new BusinessException("Mã xe đạp phải có định dạng BCyymmdd-nnnn. Ví dụ: BC260701-0001");
         }
 
         if (!isBicycleIdentifierAvailable(normalized)) {
@@ -364,17 +367,7 @@ public class ReservationService {
     }
 
     private String generateAvailableBicycleIdentifier() {
-        for (int attempt = 0; attempt < 1000; attempt++) {
-            char letter = (char) ('A' + ThreadLocalRandom.current().nextInt(26));
-            int number = ThreadLocalRandom.current().nextInt(0, 1000);
-            String candidate = String.format("%c%03d", letter, number);
-
-            if (isBicycleIdentifierAvailable(candidate)) {
-                return candidate;
-            }
-        }
-
-        throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
+        return uniqueCodeGeneratorService.generateBicycleIdentifier();
     }
     // Xe đạp: tự sinh mã dạng 1 chữ cái + 3 số, ví dụ B482.
     private boolean isBicycleIdentifierAvailable(String identifier) {
@@ -448,9 +441,6 @@ public class ReservationService {
      * RS20260613-A7F2
      */
     private String generateReservationCode() {
-        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String random = UUID.randomUUID().toString().substring(0, 4).toUpperCase();
-
-        return "RS" + date + "-" + random;
+        return uniqueCodeGeneratorService.generateReservationCode();
     }
 }

@@ -147,11 +147,10 @@ public class SessionController {
             @PathVariable UUID sessionId,
             @Valid @RequestBody UpdateImagesRequest request) {
         parkingSessionService.updateSessionImages(
-                sessionId, 
-                request.getPlateUrl(), 
-                request.getFaceUrl(), 
-                Boolean.TRUE.equals(request.getIsEntry())
-        );
+                sessionId,
+                request.getPlateUrl(),
+                request.getFaceUrl(),
+                Boolean.TRUE.equals(request.getIsEntry()));
         return ResponseEntity.ok(ApiResponse.success("Cập nhật ảnh thành công", null));
     }
 

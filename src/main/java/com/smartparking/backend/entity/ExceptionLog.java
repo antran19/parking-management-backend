@@ -21,9 +21,6 @@ public class ExceptionLog {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "session_id")
-    private ParkingSession session;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "exception_type", nullable = false, length = 30)

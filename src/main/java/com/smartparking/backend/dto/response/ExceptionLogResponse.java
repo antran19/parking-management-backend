@@ -15,7 +15,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class ExceptionLogResponse {
     private UUID id;
-    private UUID sessionId;
     private String licensePlate;
     private String exceptionType;
     private String description;

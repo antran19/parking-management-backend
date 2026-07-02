@@ -29,14 +29,13 @@ import java.util.UUID;
 public class SecurityExceptionService {
 
     private final ExceptionLogRepository exceptionLogRepository;
-    private final ParkingSessionRepository parkingSessionRepository;
+
     private final UserRepository userRepository;
+
     // Constructor injection (Quy tắc bắt buộc)
     public SecurityExceptionService(ExceptionLogRepository exceptionLogRepository,
-            ParkingSessionRepository parkingSessionRepository,
             UserRepository userRepository) {
         this.exceptionLogRepository = exceptionLogRepository;
-        this.parkingSessionRepository = parkingSessionRepository;
         this.userRepository = userRepository;
     }
 
@@ -45,11 +44,6 @@ public class SecurityExceptionService {
      */
     @Transactional
     public ExceptionLogResponse logException(SecurityExceptionRequest request) {
-        ParkingSession session = null;
-        if (request.getSessionId() != null) {
-            session = parkingSessionRepository.findById(request.getSessionId())
-                    .orElseThrow(() -> new BusinessException("Session không tồn tại"));
-        }
 
         User handledBy = null;
         if (request.getHandledByUserId() != null) {
@@ -58,7 +52,6 @@ public class SecurityExceptionService {
         }
 
         ExceptionLog exceptionLog = ExceptionLog.builder()
-                .session(session)
                 .exceptionType(request.getExceptionType())
                 .description(request.getDescription())
                 .licensePlate(request.getLicensePlate())
@@ -79,12 +72,6 @@ public class SecurityExceptionService {
         ExceptionLog exceptionLog = exceptionLogRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Sự cố không tồn tại"));
 
-        if (request.getSessionId() != null) {
-            ParkingSession session = parkingSessionRepository.findById(request.getSessionId())
-                    .orElseThrow(() -> new BusinessException("Session không tồn tại"));
-            exceptionLog.setSession(session);
-        }
-
         if (request.getExceptionType() != null) {
             exceptionLog.setExceptionType(request.getExceptionType());
         }
@@ -102,14 +89,10 @@ public class SecurityExceptionService {
         }
 
         if (request.getStatus() != null) {
-            try {
-                ExceptionLog.ExceptionStatus status = ExceptionLog.ExceptionStatus.valueOf(request.getStatus().toUpperCase());
-                exceptionLog.setStatus(status);
-                if (status == ExceptionLog.ExceptionStatus.RESOLVED && exceptionLog.getResolvedAt() == null) {
-                    exceptionLog.setResolvedAt(LocalDateTime.now());
-                }
-            } catch (IllegalArgumentException e) {
-                throw new BusinessException("Trạng thái không hợp lệ");
+            ExceptionLog.ExceptionStatus status = request.getStatus();
+            exceptionLog.setStatus(status);
+            if (status == ExceptionLog.ExceptionStatus.RESOLVED && exceptionLog.getResolvedAt() == null) {
+                exceptionLog.setResolvedAt(LocalDateTime.now());
             }
         }
 
@@ -141,7 +124,7 @@ public class SecurityExceptionService {
      */
     @Transactional(readOnly = true)
     public List<ExceptionLogResponse> getAllExceptions() {
-        return exceptionLogRepository.findAllByOrderByResolvedAtDesc()
+        return exceptionLogRepository.findAllByOrderByCreatedAtDesc()
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
@@ -150,7 +133,7 @@ public class SecurityExceptionService {
     private ExceptionLogResponse mapToResponse(ExceptionLog entity) {
         return ExceptionLogResponse.builder()
                 .id(entity.getId())
-                .sessionId(entity.getSession() != null ? entity.getSession().getId() : null)
+
                 .licensePlate(entity.getLicensePlate())
                 .exceptionType(entity.getExceptionType() != null ? entity.getExceptionType().name() : null)
                 .description(entity.getDescription())

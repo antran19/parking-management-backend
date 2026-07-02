@@ -117,9 +117,9 @@ public class PaymentConfirmationService {
                 .build();
         paymentRepository.save(payment);
 
-        // Bước 6: Giải phóng zone
+        // Bước 6: Giải phóng zone (nếu chưa giải phóng ở cổng phụ ra zone)
         Zone zone = session.getZone();
-        if (zone != null) {
+        if (zone != null && session.getExitZoneGate() == null) {
             zone = zoneSuggestionService.exitZone(zone);
         }
 

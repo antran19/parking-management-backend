@@ -28,9 +28,6 @@ public class ParkingSession {
     @JoinColumn(name = "zone_id")
     private Zone zone;
 
-    @Column(name = "qr_code", unique = true, length = 100)
-    private String qrCode;
-
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "driver_type", nullable = false, length = 20)

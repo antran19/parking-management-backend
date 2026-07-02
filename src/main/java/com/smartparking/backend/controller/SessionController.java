@@ -267,7 +267,7 @@ public class SessionController {
         if (normalizedPlate.isBlank()) {
             throw new BusinessException("Biển số không được để trống");
         }
-        SessionResponse response = parkingSessionService.getActiveSession(normalizedPlate);
+        SessionResponse response = parkingSessionService.getActiveSession(normalizedPlate, null, null);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 

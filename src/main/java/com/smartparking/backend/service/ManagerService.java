@@ -414,7 +414,6 @@ public class ManagerService {
     private ExceptionLogResponse mapToExceptionLogResponse(ExceptionLog log) {
         return ExceptionLogResponse.builder()
                 .id(log.getId())
-                .sessionId(log.getSession() != null ? log.getSession().getId() : null)
                 .licensePlate(log.getLicensePlate())
                 .exceptionType(log.getExceptionType() != null ? log.getExceptionType().name() : null)
                 .description(log.getDescription())

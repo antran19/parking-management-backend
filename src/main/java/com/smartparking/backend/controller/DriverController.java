@@ -244,8 +244,10 @@ public class DriverController {
         User currentUser = getCurrentUser(authentication);
         String licensePlate = normalizeAndValidatePlate(plate);
 
+        // Xe đang gửi trong bãi → Driver không được xóa biển số đó.
         ensurePlateHasNoActiveReservation(currentUser, licensePlate);
         ensurePlateHasNoActiveOrPendingPass(currentUser, licensePlate);
+        ensurePlateHasNoActiveSession(licensePlate);
 
         UserLicensePlate userLicensePlate = userLicensePlateRepository.findByUser(currentUser)
                 .stream()
@@ -256,6 +258,16 @@ public class DriverController {
         userLicensePlateRepository.delete(userLicensePlate);
 
         return ApiResponse.success("Xóa biển số thành công", licensePlate);
+    }
+
+    private void ensurePlateHasNoActiveSession(String licensePlate) {
+        parkingSessionRepository
+                .findByLicensePlateAndStatus(licensePlate, ParkingSession.SessionStatus.ACTIVE)
+                .ifPresent(session -> {
+                    throw new BusinessException(
+                            "Biển số " + licensePlate
+                                    + " đang có phiên gửi xe chưa kết thúc, không thể thực hiện thao tác này");
+                });
     }
 
     /**
@@ -361,12 +373,16 @@ public class DriverController {
         boolean bicyclePass = isBicycleVehicleType(vehicleType);
 
         String licensePlate = bicyclePass
-                ? resolveBicycleIdentifier(request.getLicensePlate())
+                ? uniqueCodeGeneratorService.generateBicycleIdentifier()
                 : normalizeAndValidatePlate(request.getLicensePlate());
 
+        // Xe máy/ô tô đang gửi trong bãi → không cho mua gói mới.
+        // Xe đạp → vẫn tự sinh mã riêng nên không cần check active session theo biển số
+        // cũ.
         if (!bicyclePass) {
             UserLicensePlate userPlate = ensurePlateBelongsToUser(currentUser, licensePlate);
             ensurePlateVehicleTypeMatches(userPlate, vehicleType);
+            ensurePlateHasNoActiveSession(licensePlate);
         }
 
         ensureNoActiveOrPendingPass(currentUser, licensePlate, request.getPassType());

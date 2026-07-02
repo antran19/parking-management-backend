@@ -101,10 +101,10 @@ public class ReservationService {
         // Nếu là xe đạp:
         // - Không bắt nhập biển số.
         // - Không check trong hồ sơ user_license_plates.
-        // - Tự sinh mã 4 số.
+        // - Tự sinh mã dạng BCyymmdd-nnnn, ví dụ BC260702-0001.
         boolean bicycleReservation = isBicycleVehicleType(vehicleType);
         String licensePlate = bicycleReservation
-                ? resolveBicycleIdentifier(request.getLicensePlate())
+                ? uniqueCodeGeneratorService.generateBicycleIdentifier()
                 : normalizePlate(request.getLicensePlate());
 
         /*
@@ -122,6 +122,10 @@ public class ReservationService {
         validateZoneMatchesVehicleType(zone, vehicleType);
         validateZoneHasAvailableSlot(zone);
         validatePlateHasNoActiveReservation(user, licensePlate);
+
+        if (!bicycleReservation) {
+            validatePlateHasNoActiveSession(licensePlate);
+        }
 
         LocalDateTime reservedFrom = request.getReservedFrom() != null
                 ? request.getReservedFrom()
@@ -293,6 +297,16 @@ public class ReservationService {
         }
     }
 
+    private void validatePlateHasNoActiveSession(String licensePlate) {
+        parkingSessionRepository
+                .findByLicensePlateAndStatus(licensePlate, ParkingSession.SessionStatus.ACTIVE)
+                .ifPresent(session -> {
+                    throw new BusinessException(
+                            "Biển số " + licensePlate
+                                    + " đang có phiên gửi xe chưa kết thúc, không thể tạo đặt chỗ mới");
+                });
+    }
+
     /**
      * Kiểm tra biển số có đang có đặt chỗ chưa hoàn tất không.
      *
@@ -338,7 +352,8 @@ public class ReservationService {
 
     /**
      * Xe đạp không dùng biển số thật.
-     * Hệ thống chỉ dùng mã 4 số để định danh reservation/check-in.
+     * Hệ thống tự sinh mã định danh dạng BCyymmdd-nnnn.
+     * Ví dụ: BC260702-0001.
      */
     private boolean isBicycleVehicleType(VehicleType vehicleType) {
         if (vehicleType == null || vehicleType.getName() == null) {
@@ -369,7 +384,7 @@ public class ReservationService {
     private String generateAvailableBicycleIdentifier() {
         return uniqueCodeGeneratorService.generateBicycleIdentifier();
     }
-    // Xe đạp: tự sinh mã dạng 1 chữ cái + 3 số, ví dụ B482.
+    // Xe đạp: tự sinh mã dạng BCyymmdd-nnnn, ví dụ BC260702-0001.
     private boolean isBicycleIdentifierAvailable(String identifier) {
         boolean hasActiveReservation = !reservationRepository.findByLicensePlateAndStatusIn(
                 identifier,

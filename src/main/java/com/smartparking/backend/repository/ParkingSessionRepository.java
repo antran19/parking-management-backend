@@ -18,6 +18,12 @@ import java.util.UUID;
 public interface ParkingSessionRepository extends JpaRepository<ParkingSession, UUID> {
        Optional<ParkingSession> findBySessionCode(String sessionCode);
 
+       @Query("SELECT MAX(s.sessionCode) FROM ParkingSession s WHERE s.sessionCode LIKE :prefix%")
+       String findMaxSessionCodeByPrefix(@Param("prefix") String prefix);
+
+       @Query("SELECT MAX(s.licensePlate) FROM ParkingSession s WHERE s.licensePlate LIKE :prefix%")
+       String findMaxLicensePlateByPrefix(@Param("prefix") String prefix);
+
        Optional<ParkingSession> findByLicensePlateAndStatus(String licensePlate, SessionStatus status);
 
        // Lấy các session có entryTime trong khoảng

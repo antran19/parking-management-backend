@@ -3,6 +3,7 @@ package com.smartparking.backend.service;
 import com.smartparking.backend.dto.request.CheckInRequest;
 import com.smartparking.backend.dto.request.CheckOutRequest;
 import com.smartparking.backend.dto.request.CheckInZoneRequest;
+import com.smartparking.backend.dto.request.CheckOutZoneRequest;
 import com.smartparking.backend.dto.response.SessionResponse;
 import com.smartparking.backend.util.LicensePlateUtil;
 import com.smartparking.backend.entity.*;
@@ -67,6 +68,7 @@ public class ParkingSessionService {
     private final EmergencyEventRepository emergencyEventRepository;
     private final ZoneRepository zoneRepository;
     private final UserLicensePlateRepository userLicensePlateRepository;
+    private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
 
     public ParkingSessionService(
             ParkingSessionRepository sessionRepository,
@@ -84,7 +86,8 @@ public class ParkingSessionService {
             ExceptionLogRepository exceptionLogRepository,
             EmergencyEventRepository emergencyEventRepository,
             ZoneRepository zoneRepository,
-            UserLicensePlateRepository userLicensePlateRepository) {
+            UserLicensePlateRepository userLicensePlateRepository,
+            UniqueCodeGeneratorService uniqueCodeGeneratorService) {
         this.sessionRepository = sessionRepository;
         this.zoneSuggestionService = zoneSuggestionService;
         this.pricingService = pricingService;
@@ -101,6 +104,7 @@ public class ParkingSessionService {
         this.emergencyEventRepository = emergencyEventRepository;
         this.zoneRepository = zoneRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
+        this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -126,6 +130,90 @@ public class ParkingSessionService {
     public SessionResponse checkIn(CheckInRequest request) {
         // Chặn nghiệp vụ nếu bãi đỗ đang trong tình trạng khẩn cấp
         emergencyService.ensureNormalOperation();
+
+        // 1. Phân tích mã đặt chỗ (Reservation Code) trước và thực hiện đối soát chéo
+        // loại phương tiện/biển số
+        if (request.getReservationCode() != null && !request.getReservationCode().trim().isEmpty()) {
+            Reservation reservation = reservationRepository
+                    .findByReservationCode(request.getReservationCode().trim().toUpperCase())
+                    .orElseThrow(() -> new ResourceNotFoundException("Mã đặt giữ chỗ không tồn tại"));
+
+            if (reservation.getStatus() != Reservation.ReservationStatus.CONFIRMED
+                    && reservation.getStatus() != Reservation.ReservationStatus.PENDING) {
+                throw new BusinessException(
+                        "Mã đặt giữ chỗ không khả dụng (Trạng thái: " + reservation.getStatus() + ")");
+            }
+
+            // Đối soát biển số xe đặt chỗ với thực tế nhận diện
+            if (request.getLicensePlate() != null && !request.getLicensePlate().isBlank()) {
+                String resPlate = LicensePlateUtil.normalize(reservation.getLicensePlate());
+                String requestPlate = LicensePlateUtil.normalize(request.getLicensePlate());
+                if (!resPlate.equals(requestPlate)) {
+                    throw new BusinessException("Biển số xe thực tế (" + requestPlate
+                            + ") không trùng khớp với biển số trên vé đặt chỗ (" + resPlate + ")");
+                }
+            } else {
+                // Tự động điền biển số từ đặt chỗ (cho xe không biển như xe đạp)
+                request.setLicensePlate(reservation.getLicensePlate());
+            }
+
+            // Đối soát loại phương tiện thực tế chọn trên màn hình với vé đặt chỗ
+            if (request.getVehicleTypeId() != null
+                    && !request.getVehicleTypeId().equals(reservation.getVehicleType().getId())) {
+                String reqTypeName = vehicleTypeRepository.findById(request.getVehicleTypeId())
+                        .map(VehicleType::getName).orElse("Không xác định");
+                throw new BusinessException("Loại phương tiện chọn trên màn hình (" + reqTypeName
+                        + ") không khớp với loại xe đăng ký trên vé đặt chỗ (" + reservation.getVehicleType().getName()
+                        + ")");
+            }
+
+            request.setVehicleTypeId(reservation.getVehicleType().getId());
+            request.setDriverType("PRE_BOOKED");
+        }
+
+        // 2. Phân tích mã vé tháng (Parking Pass Code) trước và thực hiện đối soát chéo
+        // loại phương tiện/biển số
+        if (request.getParkingPassCode() != null && !request.getParkingPassCode().trim().isEmpty()) {
+            ParkingPass pass = parkingPassRepository
+                    .findByParkingPassCode(request.getParkingPassCode().trim().toUpperCase())
+                    .orElseThrow(() -> new ResourceNotFoundException("Vé tháng không tồn tại"));
+
+            if (pass.getStatus() != ParkingPass.PassStatus.ACTIVE) {
+                throw new BusinessException("Vé tháng này không hoạt động (Trạng thái: " + pass.getStatus() + ")");
+            }
+
+            java.time.LocalDate today = java.time.LocalDate.now();
+            if (today.isBefore(pass.getStartDate()) || today.isAfter(pass.getEndDate())) {
+                throw new BusinessException("Vé tháng này nằm ngoài hạn sử dụng (" + pass.getStartDate() + " đến "
+                        + pass.getEndDate() + ")");
+            }
+
+            // Đối soát biển số đăng ký của vé tháng với biển số xe thực tế nhận diện từ
+            // camera
+            if (request.getLicensePlate() != null && !request.getLicensePlate().isBlank()) {
+                String passPlate = LicensePlateUtil.normalize(pass.getLicensePlate());
+                String requestPlate = LicensePlateUtil.normalize(request.getLicensePlate());
+                if (!passPlate.equals(requestPlate)) {
+                    throw new BusinessException("Biển số xe nhận dạng thực tế (" + requestPlate
+                            + ") không trùng khớp với biển số xe đăng ký của vé tháng (" + passPlate + ")");
+                }
+            } else {
+                // Tự động điền biển số xe từ vé tháng (như xe đạp)
+                request.setLicensePlate(pass.getLicensePlate());
+            }
+
+            // Đối soát loại phương tiện thực tế chọn trên màn hình với vé tháng
+            if (request.getVehicleTypeId() != null
+                    && !request.getVehicleTypeId().equals(pass.getVehicleType().getId())) {
+                String reqTypeName = vehicleTypeRepository.findById(request.getVehicleTypeId())
+                        .map(VehicleType::getName).orElse("Không xác định");
+                throw new BusinessException("Loại phương tiện chọn trên màn hình (" + reqTypeName
+                        + ") không khớp với loại xe đăng ký trên vé tháng (" + pass.getVehicleType().getName() + ")");
+            }
+
+            request.setVehicleTypeId(pass.getVehicleType().getId());
+            request.setDriverType("SUBSCRIBER");
+        }
 
         // Bước 2: Tìm các thông tin liên quan
         VehicleType vehicleType = vehicleTypeRepository.findById(request.getVehicleTypeId())
@@ -170,13 +258,21 @@ public class ParkingSessionService {
             request.setLicensePlate(licensePlate);
         }
 
-        // Bước 3: Validate — biển số không được có session đang hoạt động
-        sessionRepository.findByLicensePlateAndStatus(licensePlate, SessionStatus.ACTIVE)
-                .ifPresent(s -> {
-                    throw new BusinessException(
-                            "Biển số " + licensePlate + " đang có phiên gửi xe chưa kết thúc (Mã: " +
-                                    s.getSessionCode() + "). Vui lòng check-out trước.");
-                });
+        // Bước 3: Validate — biển số không được có session đang hoạt động của cùng loại
+        // phương tiện
+        List<ParkingSession> activeSessionsForPlate = sessionRepository.findAll().stream()
+                .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
+                .filter(s -> LicensePlateUtil.normalize(s.getLicensePlate()).equals(licensePlate))
+                .toList();
+
+        for (ParkingSession s : activeSessionsForPlate) {
+            if (s.getVehicleType().getId().equals(vehicleType.getId())) {
+                throw new BusinessException(
+                        "Biển số " + licensePlate + " (" + vehicleType.getName()
+                                + ") đang có phiên gửi xe chưa kết thúc (Mã: " +
+                                s.getSessionCode() + "). Vui lòng check-out trước.");
+            }
+        }
 
         // Bước 4: Kiểm tra Blacklist (chỉ kiểm tra nếu không phải xe đạp)
         if (!isBicycle) {
@@ -192,17 +288,25 @@ public class ParkingSessionService {
         List<ParkingPass> activePasses = parkingPassRepository.findByLicensePlateAndBuildingAndStatus(
                 request.getLicensePlate(), mainGate.getBuilding(), ParkingPass.PassStatus.ACTIVE);
         java.time.LocalDate today = java.time.LocalDate.now();
+        ParkingPass matchedPass = null;
+        boolean hasAnyDateValidPass = false;
+        String passVehicleTypeName = null;
         for (ParkingPass pass : activePasses) {
             if (!today.isBefore(pass.getStartDate()) && !today.isAfter(pass.getEndDate())) {
-                if (!pass.getVehicleType().getId().equals(vehicleType.getId())) {
-                    throw new BusinessException(
-                            "Loại phương tiện không khớp với vé tháng. Vé tháng của bạn đăng ký cho "
-                                    + pass.getVehicleType().getName() + " nhưng bạn đang gửi " + vehicleType.getName()
-                                    + ".");
+                hasAnyDateValidPass = true;
+                passVehicleTypeName = pass.getVehicleType().getName();
+                if (pass.getVehicleType().getId().equals(vehicleType.getId())) {
+                    matchedPass = pass;
+                    break;
                 }
-                hasValidPass = true;
-                break;
             }
+        }
+        if (matchedPass != null) {
+            hasValidPass = true;
+        } else if (hasAnyDateValidPass) {
+            throw new BusinessException(
+                    "Cảnh báo lệch pha: Loại phương tiện nhận diện thực tế (" + vehicleType.getName()
+                            + ") không khớp với loại xe đã đăng ký của vé tháng (" + passVehicleTypeName + ").");
         }
 
         Reservation reservation = null;
@@ -223,8 +327,10 @@ public class ParkingSessionService {
                 throw new BusinessException("Biển số không khớp với reservation");
             }
             if (!reservation.getVehicleType().getId().equals(vehicleType.getId())) {
-                throw new BusinessException("Loại phương tiện không khớp với thông tin đặt chỗ trước. Bạn đặt chỗ cho "
-                        + reservation.getVehicleType().getName() + " nhưng đang gửi " + vehicleType.getName() + ".");
+                throw new BusinessException(
+                        "Cảnh báo lệch pha: Loại phương tiện chọn trên màn hình (" + vehicleType.getName()
+                                + ") không khớp với loại xe đăng ký trên vé đặt chỗ ("
+                                + reservation.getVehicleType().getName() + ").");
             }
         } else {
             // Tự động khớp reservation theo biển số xe
@@ -235,6 +341,9 @@ public class ParkingSessionService {
                     normalizedPlate,
                     List.of(Reservation.ReservationStatus.CONFIRMED, Reservation.ReservationStatus.PENDING));
 
+            Reservation matchedReservation = null;
+            boolean hasAnyTimeValidRes = false;
+            String resVehicleTypeName = null;
             for (Reservation res : activeReservations) {
                 if (res.getZone().getFloor().getBuilding().getId().equals(mainGate.getBuilding().getId())) {
                     // Xem khung giờ có hợp lệ không: vào sớm tối đa 60 phút và trước khi hết giờ
@@ -243,41 +352,33 @@ public class ParkingSessionService {
                     LocalDateTime allowedTo = res.getReservedTo();
 
                     if (!now.isBefore(allowedFrom) && !now.isAfter(allowedTo)) {
-                        if (!res.getVehicleType().getId().equals(vehicleType.getId())) {
-                            throw new BusinessException(
-                                    "Loại phương tiện không khớp với thông tin đặt chỗ trước. Bạn đặt chỗ cho "
-                                            + res.getVehicleType().getName() + " nhưng đang gửi "
-                                            + vehicleType.getName() + ".");
+                        hasAnyTimeValidRes = true;
+                        resVehicleTypeName = res.getVehicleType().getName();
+                        if (res.getVehicleType().getId().equals(vehicleType.getId())) {
+                            matchedReservation = res;
+                            break;
                         }
-                        reservation = res;
-                        break;
                     }
                 }
             }
-        }
-
-        if (reservation != null) {
-            assignedZone = reservation.getZone();
-            // Đổi chỗ từ reservedCount sang currentCount
-            if (assignedZone.getReservedCount() > 0) {
-                assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
+            if (matchedReservation != null) {
+                reservation = matchedReservation;
+            } else if (hasAnyTimeValidRes) {
+                throw new BusinessException(
+                        "Cảnh báo lệch pha: Loại phương tiện nhận diện thực tế (" + vehicleType.getName()
+                                + ") không khớp với loại xe đã đăng ký đặt chỗ (" + resVehicleTypeName + ").");
             }
-            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
+        }
+
+        // Bước 4: Xử lý gán Zone đỗ xe
+        if (request.getZoneId() != null) {
+            assignedZone = zoneRepository.findById(request.getZoneId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Phân khu được chọn không tồn tại"));
+        } else if (reservation != null) {
+            assignedZone = reservation.getZone();
         } else {
-            // Trường hợp khách vãng lai hoặc thuê bao tháng thông thường
             assignedZone = zoneSuggestionService.suggestZone(vehicleType);
-            // Cộng trực tiếp currentCount của Zone được gợi ý
-            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
         }
-
-        // Cập nhật trạng thái Zone nếu đầy
-        if (assignedZone.getCurrentCount() + assignedZone.getReservedCount() >= assignedZone.getCapacity()) {
-            assignedZone.setStatus(Zone.ZoneStatus.FULL);
-        }
-        zoneRepository.save(assignedZone);
-
-        // Bước 5: Sinh mã session duy nhất
-        String sessionCode = generateSessionCode();
 
         // Xác định phân loại Driver
         ParkingSession.DriverType driverType = ParkingSession.DriverType.WALK_IN;
@@ -293,6 +394,68 @@ public class ParkingSessionService {
             }
         }
 
+        // Nếu chỉ là tìm kiếm/xem trước thông tin đỗ (isPreview = true)
+        if (Boolean.TRUE.equals(request.getIsPreview())) {
+            List<EligibleZoneResponse> eligibleZones = buildEligibleZonesForVehicleType(vehicleType.getId());
+            String pType = null;
+            String custName = null;
+            if (hasValidPass && !activePasses.isEmpty()) {
+                ParkingPass pass = activePasses.get(0);
+                pType = pass.getPassType() != null ? pass.getPassType().name() : null;
+                custName = pass.getUser() != null ? pass.getUser().getFullName() : "Thuê bao tháng";
+            }
+            return SessionResponse.builder()
+                    .licensePlate(licensePlate)
+                    .vehicleTypeId(vehicleType.getId())
+                    .vehicleType(vehicleType.getName())
+                    .driverType(driverType)
+                    .passType(pType)
+                    .customerName(custName)
+                    .reservationCode(reservation != null ? reservation.getReservationCode() : null)
+                    .zoneId(assignedZone.getId())
+                    .zoneCode(assignedZone.getZoneCode())
+                    .zoneName(assignedZone.getZoneName())
+                    .floorName(assignedZone.getFloor().getFloorName())
+                    .buildingId(mainGate.getBuilding().getId())
+                    .buildingName(mainGate.getBuilding().getName())
+                    .entryMainGateCode(mainGate.getGateCode())
+                    .entryMainGateName(mainGate.getGateName())
+                    .entryTime(LocalDateTime.now())
+                    .status(SessionStatus.ACTIVE)
+                    .eligibleZones(eligibleZones)
+                    .notes(request.getNotes())
+                    .build();
+        }
+
+        // Thực hiện lưu thật vào DB (nếu không phải preview)
+        if (request.getZoneId() != null) {
+            // Đổi chỗ từ reservedCount sang currentCount nếu là zone của reservation
+            if (reservation != null && reservation.getZone().getId().equals(assignedZone.getId())) {
+                if (assignedZone.getReservedCount() > 0) {
+                    assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
+                }
+            }
+            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
+        } else if (reservation != null) {
+            // Đổi chỗ từ reservedCount sang currentCount
+            if (assignedZone.getReservedCount() > 0) {
+                assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
+            }
+            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
+        } else {
+            // Cộng trực tiếp currentCount của Zone được gợi ý
+            assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
+        }
+
+        // Cập nhật trạng thái Zone nếu đầy
+        if (assignedZone.getCurrentCount() + assignedZone.getReservedCount() >= assignedZone.getCapacity()) {
+            assignedZone.setStatus(Zone.ZoneStatus.FULL);
+        }
+        zoneRepository.save(assignedZone);
+
+        // Bước 5: Sinh mã session duy nhất
+        String sessionCode = generateSessionCode();
+
         // Bước 6: Lưu phiên đỗ xe
         ParkingSession session = ParkingSession.builder()
                 .sessionCode(sessionCode)
@@ -303,7 +466,6 @@ public class ParkingSessionService {
                 .entryMainGate(mainGate)
                 .entryTime(LocalDateTime.now())
                 .zoneEntryTime(null) // Chưa quét vào zone
-                .qrCode(sessionCode)
                 .status(SessionStatus.ACTIVE)
                 .notes(request.getNotes())
                 .build();
@@ -418,6 +580,56 @@ public class ParkingSessionService {
         return response;
     }
 
+    @Transactional
+    public SessionResponse checkOutZone(CheckOutZoneRequest request) {
+        // 1. Tìm phiên gửi xe đang hoạt động
+        ParkingSession session = findActiveSessionForZoneEntry(request.getSessionCode());
+
+        // 2. Kiểm tra nếu xe chưa check-in vào zone nào
+        if (session.getZoneEntryTime() == null) {
+            throw new BusinessException("Xe " + session.getLicensePlate() + " chưa check-in vào khu vực đỗ.");
+        }
+
+        // 3. Kiểm tra nếu xe đã check-out ra khỏi zone rồi
+        if (session.getZoneExitTime() != null) {
+            throw new BusinessException("Xe " + session.getLicensePlate() + " đã check-out ra khỏi khu vực đỗ trước đó.");
+        }
+
+        // 4. Tìm cổng phụ ra (Zone Exit Gate)
+        Gate zoneGate = gateRepository.findById(request.getGateExitId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cổng phụ ra không tồn tại"));
+        if (!Boolean.TRUE.equals(zoneGate.getIsActive())) {
+            throw new BusinessException("Cổng phụ " + zoneGate.getGateName() + " đang tạm khóa hoặc bảo trì.");
+        }
+
+        if (zoneGate.getGateType() != Gate.GateType.ZONE_EXIT && zoneGate.getGateType() != Gate.GateType.ZONE_BOTH) {
+            throw new BusinessException("Cổng " + zoneGate.getGateName() + " không phải là cổng ra Zone.");
+        }
+
+        Zone currentZone = session.getZone();
+        if (currentZone == null) {
+            throw new BusinessException("Không tìm thấy thông tin phân khu đỗ xe cho phiên gửi này.");
+        }
+
+        // 5. Cập nhật Session
+        session.setExitZoneGate(zoneGate);
+        session.setZoneExitTime(LocalDateTime.now());
+        ParkingSession savedSession = sessionRepository.save(session);
+
+        // 6. Giải phóng vị trí đỗ trong Zone (Giảm currentCount)
+        Zone updatedZone = zoneSuggestionService.exitZone(currentZone);
+
+        // 7. Phát WebSocket cập nhật sức chứa
+        broadcastZoneChange(updatedZone);
+
+        log.info("CHECK-OUT STAGE 2 (Zone Exited): plate={}, session={}, actualZone={}",
+                session.getLicensePlate(), session.getSessionCode(), currentZone.getZoneCode());
+
+        SessionResponse response = buildSessionResponse(savedSession, currentZone, null);
+        response.setGuideMessage("Đã check-out ra khỏi Zone thành công. Barie mở.");
+        return response;
+    }
+
     private ParkingSession findActiveSessionForZoneEntry(String code) {
         if (code == null || code.isBlank()) {
             throw new BusinessException("Mã vé hoặc biển số không được để trống");
@@ -430,12 +642,12 @@ public class ParkingSessionService {
         if (opt.isPresent())
             return opt.get();
 
-        // 2. Tìm bằng biển số hoặc qrCode
+        // 2. Tìm bằng biển số
         return sessionRepository.findAll().stream()
                 .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
                 .filter(s -> {
                     String normPlate = s.getLicensePlate().replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-                    return normPlate.equals(cleanCode) || code.trim().equals(s.getQrCode());
+                    return normPlate.equals(cleanCode);
                 })
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -505,9 +717,9 @@ public class ParkingSessionService {
                 .build();
         paymentRepository.save(payment);
 
-        // Bước 6: Giải phóng zone
+        // Bước 6: Giải phóng zone (nếu chưa giải phóng ở cổng phụ ra zone)
         Zone zone = session.getZone();
-        if (zone != null) {
+        if (zone != null && session.getExitZoneGate() == null) {
             zone = zoneSuggestionService.exitZone(zone);
             broadcastZoneChange(zone);
         }
@@ -526,21 +738,79 @@ public class ParkingSessionService {
     // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Tra cứu thông tin phiên gửi xe đang hoạt động dựa vào biển số xe.
+     * Tra cứu thông tin phiên gửi xe đang hoạt động dựa vào biển số xe hoặc mã vé
+     * (sessionCode).
      * Tính toán và hiển thị phí tạm tính dựa trên số phút thực tế đã gửi.
      */
-    public SessionResponse getActiveSession(String licensePlate) {
-        String normalizedInput = licensePlate.replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
+    public SessionResponse getActiveSession(String licensePlate, String code, UUID vehicleTypeId) {
+        String normalizedPlate = (licensePlate != null && !licensePlate.isBlank())
+                ? LicensePlateUtil.normalize(licensePlate)
+                : "";
+        String cleanCode = (code != null && !code.isBlank()) ? code.trim().toUpperCase() : null;
 
-        ParkingSession session = sessionRepository.findAll().stream()
-                .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
-                .filter(s -> {
-                    String normPlate = s.getLicensePlate().replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-                    return normPlate.equals(normalizedInput);
-                })
-                .findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Không tìm thấy phiên gửi xe đang hoạt động cho biển số: " + licensePlate));
+        ParkingSession session;
+
+        // Nếu có truyền mã vé (sessionCode) - Ưu tiên tìm trực tiếp bằng mã vé
+        if (cleanCode != null) {
+            session = sessionRepository.findBySessionCode(cleanCode)
+                    .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Không tìm thấy phiên gửi xe đang hoạt động với mã vé: " + code));
+
+            // Nếu xe có biển (độ dài biển số nhận diện thực tế không trống), thực hiện đối
+            // soát biển số xe
+            if (!normalizedPlate.isEmpty()) {
+                String normSessionPlate = LicensePlateUtil.normalize(session.getLicensePlate());
+                if (!normSessionPlate.equals(normalizedPlate)) {
+                    throw new BusinessException("Cảnh báo lệch pha: Mã vé khớp nhưng biển số đăng ký của vé ("
+                            + session.getLicensePlate() + ") không khớp với biển số nhận diện thực tế (" + licensePlate
+                            + ").");
+                }
+            }
+
+            // Đối soát loại phương tiện nếu được gửi kèm
+            if (vehicleTypeId != null && !session.getVehicleType().getId().equals(vehicleTypeId)) {
+                String reqTypeName = vehicleTypeRepository.findById(vehicleTypeId)
+                        .map(VehicleType::getName).orElse("Không xác định");
+                throw new BusinessException("Cảnh báo lệch pha: Mã vé khớp nhưng loại xe của vé ("
+                        + session.getVehicleType().getName() + ") không khớp với loại xe thực tế (" + reqTypeName
+                        + ").");
+            }
+        } else {
+            // Không quét QR, không gửi kèm mã vé -> Tìm bằng biển số và loại xe
+            if (normalizedPlate.isEmpty()) {
+                throw new BusinessException("Vui lòng nhập biển số xe hoặc quét mã vé để tìm kiếm.");
+            }
+
+            List<ParkingSession> activeSessions = sessionRepository.findAll().stream()
+                    .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
+                    .filter(s -> LicensePlateUtil.normalize(s.getLicensePlate()).equals(normalizedPlate))
+                    .toList();
+
+            if (activeSessions.isEmpty()) {
+                throw new ResourceNotFoundException(
+                        "Không tìm thấy phiên gửi xe đang hoạt động với biển số: " + licensePlate);
+            }
+
+            if (vehicleTypeId != null) {
+                session = activeSessions.stream()
+                        .filter(s -> s.getVehicleType().getId().equals(vehicleTypeId))
+                        .findFirst()
+                        .orElseThrow(() -> {
+                            String reqTypeName = vehicleTypeRepository.findById(vehicleTypeId)
+                                    .map(VehicleType::getName).orElse("Không xác định");
+                            return new BusinessException("Biển số " + licensePlate
+                                    + " đang có phiên đỗ nhưng không khớp với loại xe được chọn (" + reqTypeName
+                                    + ").");
+                        });
+            } else {
+                if (activeSessions.size() > 1) {
+                    throw new BusinessException("Phát hiện nhiều hơn một phiên gửi xe đang hoạt động cho biển số "
+                            + licensePlate + ". Vui lòng chọn loại xe để xác định chính xác.");
+                }
+                session = activeSessions.get(0);
+            }
+        }
 
         // Tính phí tạm tính dựa vào khoảng thời gian từ lúc vào tới thời điểm hiện tại
         int currentMinutes = (int) ChronoUnit.MINUTES.between(session.getEntryTime(), LocalDateTime.now());
@@ -553,6 +823,15 @@ public class ParkingSessionService {
         response.setTotalFee(estimatedFee);
         response.setGuideMessage("Phí tạm tính: " + estimatedFee + "đ (chưa bao gồm thời gian còn lại)");
         return response;
+    }
+
+    public String findPlateByCodeForDriver(String code) {
+        String cleanCode = code.trim().toUpperCase();
+        return sessionRepository.findBySessionCode(cleanCode)
+                .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
+                .map(ParkingSession::getLicensePlate)
+                .map(LicensePlateUtil::normalize)
+                .orElse("");
     }
 
     /**
@@ -660,7 +939,7 @@ public class ParkingSessionService {
         paymentRepository.save(payment);
 
         Zone zone = session.getZone();
-        if (zone != null) {
+        if (zone != null && session.getExitZoneGate() == null) {
             zone = zoneSuggestionService.exitZone(zone);
             broadcastZoneChange(zone);
         }
@@ -747,9 +1026,7 @@ public class ParkingSessionService {
      * Ví dụ: PS20260516-A3F
      */
     private String generateSessionCode() {
-        String date = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String random = UUID.randomUUID().toString().substring(0, 3).toUpperCase();
-        return "PS" + date + "-" + random;
+        return uniqueCodeGeneratorService.generateSessionCode();
     }
 
     /**
@@ -1038,9 +1315,13 @@ public class ParkingSessionService {
             throw new BusinessException("Xe đã đi vào khu đỗ, không thể đổi phân khu");
         }
 
+        return buildEligibleZonesForVehicleType(session.getVehicleType().getId());
+    }
+
+    private List<EligibleZoneResponse> buildEligibleZonesForVehicleType(UUID vehicleTypeId) {
         // Lấy toàn bộ zone của loại phương tiện này
         List<Zone> allMatchedZones = zoneRepository.findAll().stream()
-                .filter(z -> z.getVehicleType().getId().equals(session.getVehicleType().getId()))
+                .filter(z -> z.getVehicleType().getId().equals(vehicleTypeId))
                 .filter(z -> z.getStatus() == Zone.ZoneStatus.ACTIVE || z.getStatus() == Zone.ZoneStatus.FULL)
                 .sorted((z1, z2) -> {
                     // Ưu tiên các zone có thể chọn trước
@@ -1075,11 +1356,11 @@ public class ParkingSessionService {
             int occupied = current + reserved;
 
             boolean hasActiveGate = hasActiveEntryGate(z);
-            boolean isMaintenance = z.getStatus() == Zone.ZoneStatus.MAINTENANCE 
-                    || z.getStatus() == Zone.ZoneStatus.LOCKED 
+            boolean isMaintenance = z.getStatus() == Zone.ZoneStatus.MAINTENANCE
+                    || z.getStatus() == Zone.ZoneStatus.LOCKED
                     || !hasActiveGate;
-            boolean isSelectable = z.getStatus() == Zone.ZoneStatus.ACTIVE 
-                    && hasActiveGate 
+            boolean isSelectable = z.getStatus() == Zone.ZoneStatus.ACTIVE
+                    && hasActiveGate
                     && (occupied < capacity);
 
             responseList.add(EligibleZoneResponse.builder()
@@ -1105,8 +1386,8 @@ public class ParkingSessionService {
         int reserved = zone.getReservedCount() != null ? zone.getReservedCount() : 0;
         int occupied = current + reserved;
 
-        return zone.getStatus() == Zone.ZoneStatus.ACTIVE 
-                && hasActiveEntryGate(zone) 
+        return zone.getStatus() == Zone.ZoneStatus.ACTIVE
+                && hasActiveEntryGate(zone)
                 && (occupied < capacity);
     }
 
@@ -1115,9 +1396,9 @@ public class ParkingSessionService {
             return false;
         }
         return gateRepository.findByBuildingId(zone.getFloor().getBuilding().getId()).stream()
-                .anyMatch(g -> g.getZone() != null 
-                        && g.getZone().getId().equals(zone.getId()) 
-                        && Boolean.TRUE.equals(g.getIsActive()) 
+                .anyMatch(g -> g.getZone() != null
+                        && g.getZone().getId().equals(zone.getId())
+                        && Boolean.TRUE.equals(g.getIsActive())
                         && (g.getGateType() == Gate.GateType.ZONE_ENTRY || g.getGateType() == Gate.GateType.ZONE_BOTH));
     }
 
@@ -1191,7 +1472,8 @@ public class ParkingSessionService {
 
     private void validateZoneHasEntryGate(Zone zone) {
         if (!hasActiveEntryGate(zone)) {
-            throw new BusinessException("Khu vực đỗ xe " + zone.getZoneName() + " hiện tại không thể tiếp nhận xe do chưa được cấu hình cổng vào hoạt động.");
+            throw new BusinessException("Khu vực đỗ xe " + zone.getZoneName()
+                    + " hiện tại không thể tiếp nhận xe do chưa được cấu hình cổng vào hoạt động.");
         }
     }
 
@@ -1214,14 +1496,12 @@ public class ParkingSessionService {
             return generateAvailableBicycleIdentifier();
         }
 
-        if (!normalized.matches("^[A-Z][0-9]{3}$")) {
-            throw new BusinessException("Mã xe đạp phải gồm 1 chữ cái in hoa và 3 số (Ví dụ: A123)");
+        if (!normalized.matches("^BC\\d{10}$")) {
+            throw new BusinessException("Mã xe đạp phải có định dạng BCyymmddnnnn. Ví dụ: BC2607010001");
         }
 
-        // Nếu khách tự cung cấp mã (VD: A123), chỉ cần đảm bảo mã đó KHÔNG CÓ XE NÀO
+        // Nếu khách tự cung cấp mã, chỉ cần đảm bảo mã đó KHÔNG CÓ XE NÀO
         // ĐANG ĐỖ (ACTIVE).
-        // Chúng ta cho phép check-in nếu mã đó đang ở trạng thái PENDING/CONFIRMED (vì
-        // khách đang check-in cho chính đặt chỗ đó).
         boolean hasActiveSession = sessionRepository
                 .findByLicensePlateAndStatus(normalized, ParkingSession.SessionStatus.ACTIVE)
                 .isPresent();
@@ -1234,16 +1514,7 @@ public class ParkingSessionService {
     }
 
     private String generateAvailableBicycleIdentifier() {
-        for (int attempt = 0; attempt < 100; attempt++) {
-            char randomLetter = (char) ('A' + ThreadLocalRandom.current().nextInt(26));
-            String randomDigits = String.format("%03d", ThreadLocalRandom.current().nextInt(1000));
-            String candidate = randomLetter + randomDigits;
-
-            if (isBicycleIdentifierAvailable(candidate)) {
-                return candidate;
-            }
-        }
-        throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
+        return uniqueCodeGeneratorService.generateBicycleIdentifier();
     }
 
     // Hàm này chỉ dùng khi hệ thống TỰ ĐỘNG SINH mã mới, để đảm bảo mã sinh ra là

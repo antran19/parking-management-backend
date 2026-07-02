@@ -51,6 +51,7 @@ public class ReservationService {
     private final BlacklistService blacklistService;
     private final EmergencyService emergencyService;
     private final ParkingSessionRepository parkingSessionRepository;
+    private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
 
     public ReservationService(
             ReservationRepository reservationRepository,
@@ -59,7 +60,8 @@ public class ReservationService {
             VehicleTypeRepository vehicleTypeRepository,
             UserLicensePlateRepository userLicensePlateRepository,
             BlacklistService blacklistService,
-            EmergencyService emergencyService) {
+            EmergencyService emergencyService,
+            UniqueCodeGeneratorService uniqueCodeGeneratorService) {
         this.reservationRepository = reservationRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
@@ -67,6 +69,7 @@ public class ReservationService {
         this.userLicensePlateRepository = userLicensePlateRepository;
         this.blacklistService = blacklistService;
         this.emergencyService = emergencyService;
+        this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
     }
 
     /**
@@ -98,10 +101,10 @@ public class ReservationService {
         // Nếu là xe đạp:
         // - Không bắt nhập biển số.
         // - Không check trong hồ sơ user_license_plates.
-        // - Tự sinh mã 4 số.
+        // - Tự sinh mã dạng BCyymmdd-nnnn, ví dụ BC260702-0001.
         boolean bicycleReservation = isBicycleVehicleType(vehicleType);
         String licensePlate = bicycleReservation
-                ? resolveBicycleIdentifier(request.getLicensePlate())
+                ? uniqueCodeGeneratorService.generateBicycleIdentifier()
                 : normalizePlate(request.getLicensePlate());
 
         /*
@@ -119,6 +122,10 @@ public class ReservationService {
         validateZoneMatchesVehicleType(zone, vehicleType);
         validateZoneHasAvailableSlot(zone);
         validatePlateHasNoActiveReservation(user, licensePlate);
+
+        if (!bicycleReservation) {
+            validatePlateHasNoActiveSession(licensePlate);
+        }
 
         LocalDateTime reservedFrom = request.getReservedFrom() != null
                 ? request.getReservedFrom()
@@ -290,6 +297,16 @@ public class ReservationService {
         }
     }
 
+    private void validatePlateHasNoActiveSession(String licensePlate) {
+        parkingSessionRepository
+                .findByLicensePlateAndStatus(licensePlate, ParkingSession.SessionStatus.ACTIVE)
+                .ifPresent(session -> {
+                    throw new BusinessException(
+                            "Biển số " + licensePlate
+                                    + " đang có phiên gửi xe chưa kết thúc, không thể tạo đặt chỗ mới");
+                });
+    }
+
     /**
      * Kiểm tra biển số có đang có đặt chỗ chưa hoàn tất không.
      *
@@ -335,7 +352,8 @@ public class ReservationService {
 
     /**
      * Xe đạp không dùng biển số thật.
-     * Hệ thống chỉ dùng mã 4 số để định danh reservation/check-in.
+     * Hệ thống tự sinh mã định danh dạng BCyymmdd-nnnn.
+     * Ví dụ: BC260702-0001.
      */
     private boolean isBicycleVehicleType(VehicleType vehicleType) {
         if (vehicleType == null || vehicleType.getName() == null) {
@@ -352,8 +370,8 @@ public class ReservationService {
             return generateAvailableBicycleIdentifier();
         }
 
-        if (!normalized.matches("^[A-Z][0-9]{3}$")) {
-            throw new BusinessException("Mã xe đạp phải gồm 1 chữ cái và 3 số. Ví dụ: B482");
+        if (!normalized.matches("^BC\\d{10}$")) {
+            throw new BusinessException("Mã xe đạp phải có định dạng BCyymmddnnnn. Ví dụ: BC2607010001");
         }
 
         if (!isBicycleIdentifierAvailable(normalized)) {
@@ -364,19 +382,9 @@ public class ReservationService {
     }
 
     private String generateAvailableBicycleIdentifier() {
-        for (int attempt = 0; attempt < 1000; attempt++) {
-            char letter = (char) ('A' + ThreadLocalRandom.current().nextInt(26));
-            int number = ThreadLocalRandom.current().nextInt(0, 1000);
-            String candidate = String.format("%c%03d", letter, number);
-
-            if (isBicycleIdentifierAvailable(candidate)) {
-                return candidate;
-            }
-        }
-
-        throw new BusinessException("Không thể sinh mã xe đạp lúc này, vui lòng thử lại");
+        return uniqueCodeGeneratorService.generateBicycleIdentifier();
     }
-    // Xe đạp: tự sinh mã dạng 1 chữ cái + 3 số, ví dụ B482.
+    // Xe đạp: tự sinh mã dạng BCyymmddnnnn, ví dụ BC2607020001.
     private boolean isBicycleIdentifierAvailable(String identifier) {
         boolean hasActiveReservation = !reservationRepository.findByLicensePlateAndStatusIn(
                 identifier,
@@ -419,7 +427,28 @@ public class ReservationService {
                 .reservedTo(reservation.getReservedTo())
                 .status(reservation.getStatus())
                 .createdAt(reservation.getCreatedAt())
+                .customerName(reservation.getUser() != null ? reservation.getUser().getFullName() : null)
                 .build();
+    }
+
+    public List<ReservationResponse> getAllReservations(UUID zoneId, String status) {
+        List<Reservation> list;
+        if (zoneId != null) {
+            list = reservationRepository.findByZoneId(zoneId);
+        } else {
+            list = reservationRepository.findAll();
+        }
+
+        if (status != null && !status.trim().isEmpty() && !"all".equalsIgnoreCase(status)) {
+            try {
+                Reservation.ReservationStatus rStatus = Reservation.ReservationStatus.valueOf(status.toUpperCase());
+                list = list.stream().filter(r -> r.getStatus() == rStatus).toList();
+            } catch (IllegalArgumentException e) {
+                // ignore invalid status
+            }
+        }
+
+        return list.stream().map(this::toResponse).toList();
     }
 
     /**
@@ -448,9 +477,6 @@ public class ReservationService {
      * RS20260613-A7F2
      */
     private String generateReservationCode() {
-        String date = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String random = UUID.randomUUID().toString().substring(0, 4).toUpperCase();
-
-        return "RS" + date + "-" + random;
+        return uniqueCodeGeneratorService.generateReservationCode();
     }
 }

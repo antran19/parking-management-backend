@@ -23,4 +23,5 @@ public class ReservationResponse {
     private LocalDateTime reservedTo;
     private ReservationStatus status;
     private LocalDateTime createdAt;
+    private String customerName;
 }

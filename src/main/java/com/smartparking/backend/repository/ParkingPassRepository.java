@@ -17,6 +17,8 @@ public interface ParkingPassRepository extends JpaRepository<ParkingPass, UUID> 
     List<ParkingPass> findByUserAndStatus(User user, ParkingPass.PassStatus status);
     List<ParkingPass> findByLicensePlateAndBuildingAndStatus(String licensePlate, Building building, ParkingPass.PassStatus status);
 
+    java.util.Optional<ParkingPass> findByParkingPassCode(String parkingPassCode);
+
     @Query("SELECT MAX(p.parkingPassCode) FROM ParkingPass p WHERE p.parkingPassCode LIKE :prefix%")
     String findMaxParkingPassCodeByPrefix(@Param("prefix") String prefix);
 

@@ -3,9 +3,12 @@ package com.smartparking.backend.controller;
 import com.smartparking.backend.dto.request.CheckInRequest;
 import com.smartparking.backend.dto.request.CheckOutRequest;
 import com.smartparking.backend.dto.request.CheckInZoneRequest;
+import com.smartparking.backend.dto.request.CheckOutZoneRequest;
 import com.smartparking.backend.dto.request.UpdateImagesRequest;
 import com.smartparking.backend.dto.response.ApiResponse;
 import com.smartparking.backend.dto.response.SessionResponse;
+import com.smartparking.backend.dto.response.ReservationResponse;
+import com.smartparking.backend.service.ReservationService;
 import com.smartparking.backend.entity.User;
 import com.smartparking.backend.entity.UserLicensePlate;
 import com.smartparking.backend.exception.BusinessException;
@@ -55,18 +58,33 @@ public class SessionController {
     private final UserLicensePlateRepository userLicensePlateRepository;
     private final ReservationRepository reservationRepository;
     private final ParkingPassRepository parkingPassRepository;
+    private final ReservationService reservationService;
 
     public SessionController(
             ParkingSessionService parkingSessionService,
             UserRepository userRepository,
             UserLicensePlateRepository userLicensePlateRepository,
             ReservationRepository reservationRepository,
-            ParkingPassRepository parkingPassRepository) {
+            ParkingPassRepository parkingPassRepository,
+            ReservationService reservationService) {
         this.parkingSessionService = parkingSessionService;
         this.userRepository = userRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
         this.reservationRepository = reservationRepository;
         this.parkingPassRepository = parkingPassRepository;
+        this.reservationService = reservationService;
+    }
+
+    /**
+     * Lấy danh sách đặt chỗ của bãi xe dành cho Staff/Manager/Admin xem.
+     */
+    @GetMapping("/staff/reservations")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<List<ReservationResponse>>> getAllReservations(
+            @RequestParam(value = "zoneId", required = false) UUID zoneId,
+            @RequestParam(value = "status", required = false) String status) {
+        List<ReservationResponse> responses = reservationService.getAllReservations(zoneId, status);
+        return ResponseEntity.ok(ApiResponse.success(responses));
     }
 
     /**
@@ -98,6 +116,18 @@ public class SessionController {
     public ResponseEntity<ApiResponse<SessionResponse>> checkInZone(
             @Valid @RequestBody CheckInZoneRequest request) {
         SessionResponse response = parkingSessionService.checkInZone(request);
+        return ResponseEntity.ok(ApiResponse.success(
+                response.getGuideMessage(), response));
+    }
+
+    /**
+     * Check-out xe ra khỏi Zone (Check-out lần 2) — chỉ STAFF trở lên.
+     */
+    @PostMapping("/staff/sessions/zone-exit")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<SessionResponse>> checkOutZone(
+            @Valid @RequestBody CheckOutZoneRequest request) {
+        SessionResponse response = parkingSessionService.checkOutZone(request);
         return ResponseEntity.ok(ApiResponse.success(
                 response.getGuideMessage(), response));
     }
@@ -204,7 +234,7 @@ public class SessionController {
             Authentication authentication,
             @RequestBody Map<String, String> body,
             HttpServletRequest request) {
-        String readablePlate = ensureDriverCanReadPlate(authentication, body.get("licensePlate"));
+        String readablePlate = ensureDriverCanReadPlate(authentication, body.get("licensePlate"), null);
         body.put("licensePlate", readablePlate);
         Map<String, Object> response = parkingSessionService.initiateDriverVnPayCheckout(body, request);
         return ResponseEntity.ok(ApiResponse.success("Đã tạo liên kết thanh toán VNPay cho phiên gửi xe", response));
@@ -218,9 +248,11 @@ public class SessionController {
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> getActiveSession(
             Authentication authentication,
-            @RequestParam("plate") String licensePlate) {
-        String readablePlate = ensureDriverCanReadPlate(authentication, licensePlate);
-        SessionResponse response = parkingSessionService.getActiveSession(readablePlate);
+            @RequestParam(value = "plate", required = false) String licensePlate,
+            @RequestParam(value = "code", required = false) String code,
+            @RequestParam(value = "vehicleTypeId", required = false) UUID vehicleTypeId) {
+        String readablePlate = ensureDriverCanReadPlate(authentication, licensePlate, code);
+        SessionResponse response = parkingSessionService.getActiveSession(readablePlate, code, vehicleTypeId);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -233,7 +265,7 @@ public class SessionController {
     public ResponseEntity<ApiResponse<java.util.List<SessionResponse>>> getSessionHistory(
             Authentication authentication,
             @RequestParam("plate") String licensePlate) {
-        String readablePlate = ensureDriverCanReadPlate(authentication, licensePlate);
+        String readablePlate = ensureDriverCanReadPlate(authentication, licensePlate, null);
         java.util.List<SessionResponse> history = parkingSessionService.getSessionHistory(readablePlate);
         return ResponseEntity.ok(ApiResponse.success(history));
     }
@@ -242,49 +274,61 @@ public class SessionController {
      * Driver chỉ được xem active session/history của biển số thuộc tài khoản mình.
      * Staff/Manager/Admin vẫn được tra cứu toàn bộ để phục vụ nghiệp vụ soát vé.
      */
-    private String ensureDriverCanReadPlate(Authentication authentication, String rawPlate) {
-        String normalizedPlate = LicensePlateUtil.normalize(rawPlate);
-        if (normalizedPlate.isBlank()) {
-            throw new BusinessException("Biển số hoặc mã xe không được để trống");
-        }
+    private String ensureDriverCanReadPlate(Authentication authentication, String rawPlate, String code) {
+        String normalizedPlate = rawPlate != null ? LicensePlateUtil.normalize(rawPlate) : "";
 
         if (authentication == null || authentication.getName() == null) {
             throw new BusinessException("Bạn cần đăng nhập để xem phiên gửi xe");
         }
-
-        boolean isDriver = authentication.getAuthorities().stream()
-                .anyMatch(authority -> "ROLE_DRIVER".equals(authority.getAuthority()));
 
         boolean hasElevatedRole = authentication.getAuthorities().stream()
                 .anyMatch(authority -> "ROLE_STAFF".equals(authority.getAuthority())
                         || "ROLE_MANAGER".equals(authority.getAuthority())
                         || "ROLE_ADMIN".equals(authority.getAuthority()));
 
-        if (isDriver && !hasElevatedRole) {
+        if (hasElevatedRole) {
+            return normalizedPlate;
+        }
+
+        boolean isDriver = authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_DRIVER".equals(authority.getAuthority()));
+
+        if (isDriver) {
+            String plateToCheck = normalizedPlate;
+            if (plateToCheck.isBlank() && code != null && !code.isBlank()) {
+                plateToCheck = parkingSessionService.findPlateByCodeForDriver(code);
+            }
+
+            if (plateToCheck.isBlank()) {
+                throw new BusinessException("Biển số hoặc mã xe không được để trống");
+            }
+
             User currentUser = userRepository.findByEmail(authentication.getName())
                     .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tài khoản driver"));
 
+            final String finalPlateToCheck = plateToCheck;
             boolean plateBelongsToUser = userLicensePlateRepository.findByUser(currentUser)
                     .stream()
                     .map(UserLicensePlate::getLicensePlate)
                     .map(LicensePlateUtil::normalize)
-                    .anyMatch(normalizedPlate::equals);
+                    .anyMatch(finalPlateToCheck::equals);
 
             boolean identifierBelongsToReservation = reservationRepository.findByUserOrderByCreatedAtDesc(currentUser)
                     .stream()
                     .map(Reservation::getLicensePlate)
                     .map(LicensePlateUtil::normalize)
-                    .anyMatch(normalizedPlate::equals);
+                    .anyMatch(finalPlateToCheck::equals);
 
             boolean identifierBelongsToPass = parkingPassRepository.findByUser(currentUser)
                     .stream()
                     .map(ParkingPass::getLicensePlate)
                     .map(LicensePlateUtil::normalize)
-                    .anyMatch(normalizedPlate::equals);
+                    .anyMatch(finalPlateToCheck::equals);
 
             if (!plateBelongsToUser && !identifierBelongsToReservation && !identifierBelongsToPass) {
                 throw new BusinessException("Bạn không có quyền xem phiên gửi xe của mã xe này");
             }
+            return finalPlateToCheck;
         }
 
         return normalizedPlate;

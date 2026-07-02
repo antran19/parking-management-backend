@@ -687,8 +687,8 @@ public class DriverController {
             return generateAvailableBicycleIdentifier();
         }
 
-        if (!normalized.matches("^BC\\d{6}-\\d{4}$")) {
-            throw new BusinessException("Mã xe đạp phải có định dạng BCyymmdd-nnnn. Ví dụ: BC260701-0001");
+        if (!normalized.matches("^BC\\d{10}$")) {
+            throw new BusinessException("Mã xe đạp phải có định dạng BCyymmddnnnn. Ví dụ: BC2607010001");
         }
 
         if (!isBicycleIdentifierAvailable(normalized)) {

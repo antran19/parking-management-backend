@@ -14,27 +14,28 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * SecurityExceptionService — Ghi nhận sự cố an ninh (Thiên phụ trách)
  *
  * TODO (Thiên): Implement:
  * - logException(request) → Tạo ExceptionLog lưu vào DB
+ * - updateException(id, request) → Cập nhật sự cố
+ * - resolveException(id, handledByUserId) → Đánh dấu đã giải quyết
  * - getAllExceptions() → Lấy danh sách sự cố (sắp xếp mới nhất trước)
  */
 @Service
 public class SecurityExceptionService {
 
     private final ExceptionLogRepository exceptionLogRepository;
-    private final ParkingSessionRepository parkingSessionRepository;
+
     private final UserRepository userRepository;
 
     // Constructor injection (Quy tắc bắt buộc)
     public SecurityExceptionService(ExceptionLogRepository exceptionLogRepository,
-            ParkingSessionRepository parkingSessionRepository,
             UserRepository userRepository) {
         this.exceptionLogRepository = exceptionLogRepository;
-        this.parkingSessionRepository = parkingSessionRepository;
         this.userRepository = userRepository;
     }
 
@@ -43,11 +44,6 @@ public class SecurityExceptionService {
      */
     @Transactional
     public ExceptionLogResponse logException(SecurityExceptionRequest request) {
-        ParkingSession session = null;
-        if (request.getSessionId() != null) {
-            session = parkingSessionRepository.findById(request.getSessionId())
-                    .orElseThrow(() -> new BusinessException("Session không tồn tại"));
-        }
 
         User handledBy = null;
         if (request.getHandledByUserId() != null) {
@@ -56,13 +52,68 @@ public class SecurityExceptionService {
         }
 
         ExceptionLog exceptionLog = ExceptionLog.builder()
-                .session(session)
                 .exceptionType(request.getExceptionType())
                 .description(request.getDescription())
                 .licensePlate(request.getLicensePlate())
                 .handledBy(handledBy)
-                .resolvedAt(LocalDateTime.now())
+                .imageUrls(request.getImageUrls())
+                .status(ExceptionLog.ExceptionStatus.PENDING)
                 .build();
+
+        ExceptionLog saved = exceptionLogRepository.save(exceptionLog);
+        return mapToResponse(saved);
+    }
+
+    /**
+     * Cập nhật sự cố an ninh đã ghi nhận
+     */
+    @Transactional
+    public ExceptionLogResponse updateException(UUID id, SecurityExceptionRequest request) {
+        ExceptionLog exceptionLog = exceptionLogRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Sự cố không tồn tại"));
+
+        if (request.getExceptionType() != null) {
+            exceptionLog.setExceptionType(request.getExceptionType());
+        }
+
+        if (request.getDescription() != null) {
+            exceptionLog.setDescription(request.getDescription());
+        }
+
+        if (request.getLicensePlate() != null) {
+            exceptionLog.setLicensePlate(request.getLicensePlate());
+        }
+
+        if (request.getImageUrls() != null) {
+            exceptionLog.setImageUrls(request.getImageUrls());
+        }
+
+        if (request.getStatus() != null) {
+            ExceptionLog.ExceptionStatus status = request.getStatus();
+            exceptionLog.setStatus(status);
+            if (status == ExceptionLog.ExceptionStatus.RESOLVED && exceptionLog.getResolvedAt() == null) {
+                exceptionLog.setResolvedAt(LocalDateTime.now());
+            }
+        }
+
+        ExceptionLog saved = exceptionLogRepository.save(exceptionLog);
+        return mapToResponse(saved);
+    }
+
+    /**
+     * Đánh dấu sự cố đã được giải quyết
+     */
+    @Transactional
+    public ExceptionLogResponse resolveException(UUID id, UUID handledByUserId) {
+        ExceptionLog exceptionLog = exceptionLogRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Sự cố không tồn tại"));
+
+        User handledBy = userRepository.findById(handledByUserId)
+                .orElseThrow(() -> new BusinessException("Người xử lý không tồn tại"));
+
+        exceptionLog.setStatus(ExceptionLog.ExceptionStatus.RESOLVED);
+        exceptionLog.setResolvedAt(LocalDateTime.now());
+        exceptionLog.setHandledBy(handledBy);
 
         ExceptionLog saved = exceptionLogRepository.save(exceptionLog);
         return mapToResponse(saved);
@@ -73,7 +124,7 @@ public class SecurityExceptionService {
      */
     @Transactional(readOnly = true)
     public List<ExceptionLogResponse> getAllExceptions() {
-        return exceptionLogRepository.findAllByOrderByResolvedAtDesc()
+        return exceptionLogRepository.findAllByOrderByCreatedAtDesc()
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
@@ -82,11 +133,13 @@ public class SecurityExceptionService {
     private ExceptionLogResponse mapToResponse(ExceptionLog entity) {
         return ExceptionLogResponse.builder()
                 .id(entity.getId())
-                .sessionId(entity.getSession() != null ? entity.getSession().getId() : null)
+
                 .licensePlate(entity.getLicensePlate())
                 .exceptionType(entity.getExceptionType() != null ? entity.getExceptionType().name() : null)
                 .description(entity.getDescription())
                 .handledBy(entity.getHandledBy() != null ? entity.getHandledBy().getFullName() : null)
+                .status(entity.getStatus() != null ? entity.getStatus().name() : null)
+                .imageUrls(entity.getImageUrls())
                 .resolvedAt(entity.getResolvedAt())
                 .createdAt(entity.getCreatedAt())
                 .build();

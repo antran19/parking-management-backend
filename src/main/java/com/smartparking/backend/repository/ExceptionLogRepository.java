@@ -13,6 +13,7 @@ import java.util.UUID;
 @Repository
 public interface ExceptionLogRepository extends JpaRepository<ExceptionLog, UUID> {
     java.util.List<ExceptionLog> findAllByOrderByResolvedAtDesc();
+    java.util.List<ExceptionLog> findAllByOrderByCreatedAtDesc();
 
     // Đếm sự cố chưa được giải quyết
     long countByResolvedAtIsNull();

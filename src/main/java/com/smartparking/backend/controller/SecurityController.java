@@ -99,6 +99,40 @@ public class SecurityController {
         return ResponseEntity.ok(ApiResponse.success(list));
     }
 
+    /**
+     * Cập nhật sự cố an ninh đã ghi nhận (VD: sửa loại, mô tả, ảnh đính kèm)
+     * PUT /api/v1/security/exceptions/{id}
+     */
+    @PutMapping("/exceptions/{id}")
+    @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ExceptionLogResponse>> updateException(
+            @PathVariable UUID id,
+            @RequestBody SecurityExceptionRequest request) {
+        ExceptionLogResponse exceptionLog = securityExceptionService.updateException(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật sự cố an ninh", exceptionLog));
+    }
+
+    /**
+     * Đánh dấu sự cố đã được giải quyết
+     * PUT /api/v1/security/exceptions/{id}/resolve
+     */
+    @PutMapping("/exceptions/{id}/resolve")
+    @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<ExceptionLogResponse>> resolveException(
+            @PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
+        // Lấy handledByUserId từ body, đây thường là user id của nhân viên đang xử lý
+        UUID handledByUserId = null;
+        if (body.get("handledByUserId") != null) {
+            handledByUserId = UUID.fromString(String.valueOf(body.get("handledByUserId")));
+        } else {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Thiếu thông tin người xử lý (handledByUserId)"));
+        }
+        
+        ExceptionLogResponse exceptionLog = securityExceptionService.resolveException(id, handledByUserId);
+        return ResponseEntity.ok(ApiResponse.success("Đã đánh dấu sự cố là đã giải quyết", exceptionLog));
+    }
+
     // =====================================================================
     // SOS KHẨN CẤP (EMERGENCY)
     // =====================================================================
@@ -212,6 +246,18 @@ public class SecurityController {
             @Valid @RequestBody BlacklistPlateRequest request) {
         BlacklistPlateResponse response = blacklistService.addToBlacklist(request);
         return ResponseEntity.ok(ApiResponse.success("Đã thêm biển số vào danh sách đen", response));
+    }
+
+    /**
+     * Cập nhật thông tin một bản ghi blacklist (biển số, lý do, mô tả)
+     * PUT /api/v1/security/blacklist/{id}
+     */
+    @PutMapping("/blacklist/{id}")
+    public ResponseEntity<ApiResponse<BlacklistPlateResponse>> updateBlacklistPlate(
+            @PathVariable UUID id,
+            @RequestBody BlacklistPlateRequest request) {
+        BlacklistPlateResponse response = blacklistService.updateBlacklist(id, request);
+        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật thông tin blacklist", response));
     }
 
     /**

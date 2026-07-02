@@ -93,6 +93,9 @@ public class SecurityConfig {
                 // Active session, history, bookings, payments
                 .requestMatchers("/api/v1/driver/**").hasAnyRole("DRIVER", "STAFF", "MANAGER", "ADMIN")
 
+                // ── Security tra cứu xe ──
+                .requestMatchers("/api/v1/staff/sessions/active", "/api/v1/staff/sessions/history").hasAnyRole("STAFF", "MANAGER", "ADMIN", "SECURITY")
+
                 // ── Staff: Nhân viên soát vé + Quản lý + Admin ──
                 // Check-in, check-out, quản lý session
                 .requestMatchers("/api/v1/staff/**").hasAnyRole("STAFF", "MANAGER", "ADMIN")
@@ -127,12 +130,7 @@ public class SecurityConfig {
     @Bean
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
         org.springframework.web.cors.CorsConfiguration config = new org.springframework.web.cors.CorsConfiguration();
-        config.setAllowedOrigins(java.util.List.of(
-                "http://localhost:5173",
-                "http://localhost:5174",
-                "https://localhost:5173",
-                "https://localhost:5174"
-        ));
+        config.setAllowedOriginPatterns(java.util.List.of("*"));
         config.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(java.util.List.of("*"));
         config.setAllowCredentials(true);

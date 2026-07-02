@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -20,4 +21,7 @@ public class BlacklistPlateRequest {
 
     @NotNull(message = "Người thêm blacklist không được để trống")
     private UUID addedByUserId;
+
+    // Danh sách URL ảnh minh chứng (tuỳ chọn, dùng cho tính năng sửa)
+    private List<String> imageUrls;
 }

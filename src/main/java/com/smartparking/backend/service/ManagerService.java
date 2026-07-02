@@ -449,18 +449,51 @@ public class ManagerService {
      * ================================
      */
     public PricingRule createPricingRule(Map<String, Object> body) {
-        Building building = buildingRepository.findById(uuid(body, "buildingId"))
+        // Kiểm tra vehicleTypeId bắt buộc
+        if (!body.containsKey("vehicleTypeId") || body.get("vehicleTypeId") == null || body.get("vehicleTypeId").toString().trim().isEmpty()) {
+            throw new BusinessException("vehicleTypeId là bắt buộc");
+        }
+
+        // Lấy buildingId từ body, nếu không có thì dùng building đầu tiên
+        UUID buildingId;
+        if (body.containsKey("buildingId") && body.get("buildingId") != null) {
+            buildingId = uuid(body, "buildingId");
+        } else {
+            // Nếu frontend không gửi, lấy building đầu tiên
+            buildingId = buildingRepository.findAll().stream()
+                    .map(Building::getId)
+                    .findFirst()
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tòa nhà nào"));
+        }
+
+        Building building = buildingRepository.findById(buildingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
 
-        VehicleType vehicleType = vehicleTypeRepository.findById(uuid(body, "vehicleTypeId"))
+        // Lấy vehicleTypeId từ body (frontend gửi vehicleTypeId)
+        UUID vehicleTypeId = uuid(body, "vehicleTypeId");
+        VehicleType vehicleType = vehicleTypeRepository.findById(vehicleTypeId)
                 .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại"));
+
+        // Lấy pricingType
+        PricingRule.PricingType pricingType = PricingRule.PricingType.valueOf(
+                textOrDefault(body, "pricingType", "HOURLY").toUpperCase());
+
+        // Kiểm tra pricePerUnit
+        BigDecimal pricePerUnit = decimal(body, "pricePerUnit", BigDecimal.ZERO);
+        if (pricePerUnit.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("Đơn giá phải lớn hơn 0");
+        }
+
+        // Kiểm tra xem bảng giá này đã tồn tại chưa (unique constraint)
+        if (pricingRuleRepository.findByBuildingIdAndVehicleTypeIdAndPricingType(buildingId, vehicleTypeId, pricingType).isPresent()) {
+            throw new BusinessException("Biểu phí cho " + vehicleType.getName() + " (" + pricingType.name() + ") đã tồn tại");
+        }
 
         PricingRule rule = PricingRule.builder()
                 .building(building)
                 .vehicleType(vehicleType)
-                .pricingType(PricingRule.PricingType.valueOf(
-                        textOrDefault(body, "pricingType", "HOURLY").toUpperCase()))
-                .pricePerUnit(decimal(body, "pricePerUnit", BigDecimal.ZERO))
+                .pricingType(pricingType)
+                .pricePerUnit(pricePerUnit)
                 .freeMinutes(number(body, "freeMinutes", 0))
                 .build();
 

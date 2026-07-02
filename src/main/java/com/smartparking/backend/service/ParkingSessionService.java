@@ -592,7 +592,8 @@ public class ParkingSessionService {
 
         // 3. Kiểm tra nếu xe đã check-out ra khỏi zone rồi
         if (session.getZoneExitTime() != null) {
-            throw new BusinessException("Xe " + session.getLicensePlate() + " đã check-out ra khỏi khu vực đỗ trước đó.");
+            throw new BusinessException(
+                    "Xe " + session.getLicensePlate() + " đã check-out ra khỏi khu vực đỗ trước đó.");
         }
 
         // 4. Tìm cổng phụ ra (Zone Exit Gate)

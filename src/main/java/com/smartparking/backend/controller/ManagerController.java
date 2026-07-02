@@ -1,8 +1,9 @@
 package com.smartparking.backend.controller;
 
+import com.smartparking.backend.dto.request.BlacklistRemoveRequest;
 import com.smartparking.backend.dto.response.*;
-import com.smartparking.backend.dto.response.ExceptionLogResponse;
 import com.smartparking.backend.exception.ResourceNotFoundException;
+import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.service.BlacklistService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -135,6 +136,23 @@ public class ManagerController {
         return ResponseEntity.ok(ApiResponse.success(list));
     }
 
+    @PutMapping("/blacklist/{id}/status")
+    public ResponseEntity<ApiResponse<BlacklistPlateResponse>> removeFromBlacklist(
+        @PathVariable UUID id,
+        @RequestBody BlacklistRemoveRequest request) {
+    BlacklistPlateResponse updated = blacklistService.removeFromBlacklist(id, request);
+    return ResponseEntity.ok(ApiResponse.success(updated));
+    }
+    
+
+
+    
+
+
+
+
+
+
     /*
      * =============================================================================
      * ================================
@@ -144,7 +162,14 @@ public class ManagerController {
      */
     @PostMapping("/pricing-rules")
     public ResponseEntity<ApiResponse<PricingRule>> createPricingRule(@RequestBody Map<String, Object> body) {
-        return ResponseEntity.ok(ApiResponse.success("Đã tạo bảng giá", managerService.createPricingRule(body)));
+        try {
+            PricingRule rule = managerService.createPricingRule(body);
+            return ResponseEntity.ok(ApiResponse.success("Đã tạo bảng giá", rule));
+        } catch (BusinessException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
     }
 
     @PutMapping("/pricing-rules/{id}")

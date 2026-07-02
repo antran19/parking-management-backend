@@ -26,6 +26,9 @@ public class CheckInRequest {
     // Optional: mã đặt chỗ trước (nếu có pre-booking)
     private String reservationCode;
 
+    // Optional: mã vé tháng quét được (nếu có)
+    private String parkingPassCode;
+
     // Optional: Loại tài xế (WALK_IN, PRE_BOOKED, SUBSCRIBER)
     private String driverType;
 

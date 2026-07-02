@@ -73,22 +73,41 @@ public class DataInitializer implements CommandLineRunner {
 
         // Khởi tạo cổng phụ (ZONE_ENTRY) cho từng phân khu
         // Floor B2
-        getOrCreateGate(building, "GATE-ZONE-B2-A", "Cổng Zone B2-A (Xe máy)", Gate.GateType.ZONE_ENTRY, b2a);
-        getOrCreateGate(building, "GATE-ZONE-B2-B", "Cổng Zone B2-B (Xe máy)", Gate.GateType.ZONE_ENTRY, b2b);
-        getOrCreateGate(building, "GATE-ZONE-B2-C", "Cổng Zone B2-C (Xe đạp)", Gate.GateType.ZONE_ENTRY, b2c);
+        getOrCreateGate(building, "GATE-ZONE-B2-A", "Cổng vào Zone B2-A (Xe máy)", Gate.GateType.ZONE_ENTRY, b2a);
+        getOrCreateGate(building, "GATE-ZONE-B2-B", "Cổng vào Zone B2-B (Xe máy)", Gate.GateType.ZONE_ENTRY, b2b);
+        getOrCreateGate(building, "GATE-ZONE-B2-C", "Cổng vào Zone B2-C (Xe đạp)", Gate.GateType.ZONE_ENTRY, b2c);
 
         // Floor B1
-        getOrCreateGate(building, "GATE-ZONE-B1-A", "Cổng Zone B1-A (Xe máy)", Gate.GateType.ZONE_ENTRY, b1a);
-        getOrCreateGate(building, "GATE-ZONE-B1-B", "Cổng Zone B1-B (Xe máy)", Gate.GateType.ZONE_ENTRY, b1b);
-        getOrCreateGate(building, "GATE-ZONE-B1-C", "Cổng Zone B1-C (Xe đạp)", Gate.GateType.ZONE_ENTRY, b1c);
+        getOrCreateGate(building, "GATE-ZONE-B1-A", "Cổng vào Zone B1-A (Xe máy)", Gate.GateType.ZONE_ENTRY, b1a);
+        getOrCreateGate(building, "GATE-ZONE-B1-B", "Cổng vào Zone B1-B (Xe máy)", Gate.GateType.ZONE_ENTRY, b1b);
+        getOrCreateGate(building, "GATE-ZONE-B1-C", "Cổng vào Zone B1-C (Xe đạp)", Gate.GateType.ZONE_ENTRY, b1c);
 
         // Floor T1
-        getOrCreateGate(building, "GATE-ZONE-T1-A", "Cổng Zone T1-A (Ô tô)", Gate.GateType.ZONE_ENTRY, t1a);
-        getOrCreateGate(building, "GATE-ZONE-T1-B", "Cổng Zone T1-B (Ô tô)", Gate.GateType.ZONE_ENTRY, t1b);
+        getOrCreateGate(building, "GATE-ZONE-T1-A", "Cổng vào Zone T1-A (Ô tô)", Gate.GateType.ZONE_ENTRY, t1a);
+        getOrCreateGate(building, "GATE-ZONE-T1-B", "Cổng vào Zone T1-B (Ô tô)", Gate.GateType.ZONE_ENTRY, t1b);
 
         // Floor T2
-        getOrCreateGate(building, "GATE-ZONE-T2-A", "Cổng Zone T2-A (Xe tải)", Gate.GateType.ZONE_ENTRY, t2a);
-        getOrCreateGate(building, "GATE-ZONE-T2-B", "Cổng Zone T2-B (Xe tải)", Gate.GateType.ZONE_ENTRY, t2b);
+        getOrCreateGate(building, "GATE-ZONE-T2-A", "Cổng vào Zone T2-A (Xe tải)", Gate.GateType.ZONE_ENTRY, t2a);
+        getOrCreateGate(building, "GATE-ZONE-T2-B", "Cổng vào Zone T2-B (Xe tải)", Gate.GateType.ZONE_ENTRY, t2b);
+
+        // Khởi tạo cổng phụ ra (ZONE_EXIT) cho từng phân khu
+        // Floor B2
+        getOrCreateGate(building, "GATE-ZONE-B2-A-OUT", "Cổng ra Zone B2-A (Xe máy)", Gate.GateType.ZONE_EXIT, b2a);
+        getOrCreateGate(building, "GATE-ZONE-B2-B-OUT", "Cổng ra Zone B2-B (Xe máy)", Gate.GateType.ZONE_EXIT, b2b);
+        getOrCreateGate(building, "GATE-ZONE-B2-C-OUT", "Cổng ra Zone B2-C (Xe đạp)", Gate.GateType.ZONE_EXIT, b2c);
+
+        // Floor B1
+        getOrCreateGate(building, "GATE-ZONE-B1-A-OUT", "Cổng ra Zone B1-A (Xe máy)", Gate.GateType.ZONE_EXIT, b1a);
+        getOrCreateGate(building, "GATE-ZONE-B1-B-OUT", "Cổng ra Zone B1-B (Xe máy)", Gate.GateType.ZONE_EXIT, b1b);
+        getOrCreateGate(building, "GATE-ZONE-B1-C-OUT", "Cổng ra Zone B1-C (Xe đạp)", Gate.GateType.ZONE_EXIT, b1c);
+
+        // Floor T1
+        getOrCreateGate(building, "GATE-ZONE-T1-A-OUT", "Cổng ra Zone T1-A (Ô tô)", Gate.GateType.ZONE_EXIT, t1a);
+        getOrCreateGate(building, "GATE-ZONE-T1-B-OUT", "Cổng ra Zone T1-B (Ô tô)", Gate.GateType.ZONE_EXIT, t1b);
+
+        // Floor T2
+        getOrCreateGate(building, "GATE-ZONE-T2-A-OUT", "Cổng ra Zone T2-A (Xe tải)", Gate.GateType.ZONE_EXIT, t2a);
+        getOrCreateGate(building, "GATE-ZONE-T2-B-OUT", "Cổng ra Zone T2-B (Xe tải)", Gate.GateType.ZONE_EXIT, t2b);
 
 
 

@@ -370,8 +370,8 @@ public class ReservationService {
             return generateAvailableBicycleIdentifier();
         }
 
-        if (!normalized.matches("^BC\\d{6}-\\d{4}$")) {
-            throw new BusinessException("Mã xe đạp phải có định dạng BCyymmdd-nnnn. Ví dụ: BC260701-0001");
+        if (!normalized.matches("^BC\\d{10}$")) {
+            throw new BusinessException("Mã xe đạp phải có định dạng BCyymmddnnnn. Ví dụ: BC2607010001");
         }
 
         if (!isBicycleIdentifierAvailable(normalized)) {
@@ -384,7 +384,7 @@ public class ReservationService {
     private String generateAvailableBicycleIdentifier() {
         return uniqueCodeGeneratorService.generateBicycleIdentifier();
     }
-    // Xe đạp: tự sinh mã dạng BCyymmdd-nnnn, ví dụ BC260702-0001.
+    // Xe đạp: tự sinh mã dạng BCyymmddnnnn, ví dụ BC2607020001.
     private boolean isBicycleIdentifierAvailable(String identifier) {
         boolean hasActiveReservation = !reservationRepository.findByLicensePlateAndStatusIn(
                 identifier,
@@ -427,7 +427,28 @@ public class ReservationService {
                 .reservedTo(reservation.getReservedTo())
                 .status(reservation.getStatus())
                 .createdAt(reservation.getCreatedAt())
+                .customerName(reservation.getUser() != null ? reservation.getUser().getFullName() : null)
                 .build();
+    }
+
+    public List<ReservationResponse> getAllReservations(UUID zoneId, String status) {
+        List<Reservation> list;
+        if (zoneId != null) {
+            list = reservationRepository.findByZoneId(zoneId);
+        } else {
+            list = reservationRepository.findAll();
+        }
+
+        if (status != null && !status.trim().isEmpty() && !"all".equalsIgnoreCase(status)) {
+            try {
+                Reservation.ReservationStatus rStatus = Reservation.ReservationStatus.valueOf(status.toUpperCase());
+                list = list.stream().filter(r -> r.getStatus() == rStatus).toList();
+            } catch (IllegalArgumentException e) {
+                // ignore invalid status
+            }
+        }
+
+        return list.stream().map(this::toResponse).toList();
     }
 
     /**

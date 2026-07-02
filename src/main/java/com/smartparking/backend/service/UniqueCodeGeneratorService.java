@@ -97,7 +97,7 @@ public class UniqueCodeGeneratorService {
     @Transactional
     public synchronized String generateBicycleIdentifier() {
         String todayStr = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyMMdd"));
-        String prefix = "BC" + todayStr + "-";
+        String prefix = "BC" + todayStr;
 
         String maxSessionPlate = parkingSessionRepository.findMaxLicensePlateByPrefix(prefix);
         String maxReservationPlate = reservationRepository.findMaxLicensePlateByPrefix(prefix);

@@ -1,7 +1,6 @@
 package com.smartparking.backend.service;
 
 import com.smartparking.backend.dto.request.BlacklistPlateRequest;
-
 import com.smartparking.backend.dto.request.BlacklistRemoveRequest;
 import com.smartparking.backend.dto.response.BlacklistAlertResponse;
 import com.smartparking.backend.dto.response.BlacklistPlateResponse;
@@ -39,6 +38,7 @@ public class BlacklistService {
     private final UserRepository userRepository;
     private final GateRepository gateRepository;
     private final SimpMessagingTemplate messagingTemplate;
+
     // Tiêm phụ thuộc qua Constructor (Bắt buộc)
     public BlacklistService(BlacklistPlateRepository blacklistPlateRepository,
             UserRepository userRepository,
@@ -111,7 +111,8 @@ public class BlacklistService {
         // Cập nhật biển số (nếu có thay đổi)
         if (request.getLicensePlate() != null && !request.getLicensePlate().isBlank()) {
             String newNormalized = LicensePlateUtil.normalize(request.getLicensePlate());
-            // Kiểm tra xem biển số mới có trùng với bản ghi blacklist khác đang active không
+            // Kiểm tra xem biển số mới có trùng với bản ghi blacklist khác đang active
+            // không
             boolean conflict = blacklistPlateRepository
                     .existsByNormalizedPlateAndIsActiveTrue(newNormalized)
                     && !newNormalized.equals(plate.getNormalizedPlate());

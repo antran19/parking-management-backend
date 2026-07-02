@@ -250,9 +250,9 @@ public class ParkingSessionService {
             if (rawPlate == null || rawPlate.isBlank()) {
                 throw new BusinessException("Biển số xe không được để trống");
             }
-            if (!rawPlate.matches("^\\s*\\d{2}[A-Za-z]{1,2}\\d?[- ]?\\d{3,5}(\\.\\d{2})?\\s*$")) {
-                throw new BusinessException(
-                        "Biển số không đúng định dạng. Ví dụ: 51F-123.45, 30A-12345 hoặc 59X1-12345");
+            String validationError = LicensePlateUtil.getLicensePlateValidationError(rawPlate, vehicleType.getName());
+            if (validationError != null) {
+                throw new BusinessException(validationError);
             }
             licensePlate = LicensePlateUtil.normalize(rawPlate);
             request.setLicensePlate(licensePlate);

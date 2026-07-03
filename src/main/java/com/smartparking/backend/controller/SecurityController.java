@@ -128,7 +128,7 @@ public class SecurityController {
         } else {
             return ResponseEntity.badRequest().body(ApiResponse.error("Thiếu thông tin người xử lý (handledByUserId)"));
         }
-        
+
         ExceptionLogResponse exceptionLog = securityExceptionService.resolveException(id, handledByUserId);
         return ResponseEntity.ok(ApiResponse.success("Đã đánh dấu sự cố là đã giải quyết", exceptionLog));
     }

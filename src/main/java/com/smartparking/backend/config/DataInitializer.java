@@ -35,10 +35,50 @@ public class DataInitializer implements CommandLineRunner {
     private final UserLicensePlateRepository userLicensePlateRepository;
     private final SystemSettingsRepository systemSettingsRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ReservationRepository reservationRepository;
+    private final ParkingSessionRepository parkingSessionRepository;
 
     @Override
     public void run(String... args) {
         log.info("🚀 DataInitializer: Kiểm tra và bổ sung dữ liệu mẫu nếu thiếu...");
+
+        // Tự động đồng bộ và sửa reservedCount + currentCount cho tất cả các Zone dựa theo dữ liệu thực tế trong DB
+        try {
+            log.info("🔄 DataInitializer: Đang đồng bộ lại reservedCount và currentCount cho các Zone từ dữ liệu thực tế...");
+            List<Reservation> activeReservations = reservationRepository.findAll().stream()
+                    .filter(r -> r.getStatus() == Reservation.ReservationStatus.PENDING 
+                              || r.getStatus() == Reservation.ReservationStatus.CONFIRMED)
+                    .toList();
+
+            List<ParkingSession> activeSessions = parkingSessionRepository.findAll().stream()
+                    .filter(s -> s.getStatus() == ParkingSession.SessionStatus.ACTIVE)
+                    .toList();
+
+            List<Zone> allZones = zoneRepository.findAll();
+            for (Zone z : allZones) {
+                long activeResCount = activeReservations.stream()
+                        .filter(r -> r.getZone() != null && r.getZone().getId().equals(z.getId()))
+                        .count();
+
+                long activeSessCount = activeSessions.stream()
+                        .filter(s -> s.getZone() != null && s.getZone().getId().equals(z.getId()))
+                        .count();
+
+                z.setReservedCount((int) activeResCount);
+                z.setCurrentCount((int) activeSessCount);
+                
+                int capacity = z.getCapacity() == null ? 0 : z.getCapacity();
+                if (capacity > 0 && (int) activeSessCount + (int) activeResCount >= capacity) {
+                    z.setStatus(Zone.ZoneStatus.FULL);
+                } else if (z.getStatus() == Zone.ZoneStatus.FULL) {
+                    z.setStatus(Zone.ZoneStatus.ACTIVE);
+                }
+                zoneRepository.save(z);
+            }
+            log.info("✅ DataInitializer: Đã đồng bộ xong trạng thái và số lượng các Zone!");
+        } catch (Exception e) {
+            log.error("❌ DataInitializer: Lỗi khi đồng bộ các Zone: {}", e.getMessage(), e);
+        }
 
         VehicleType xeDap = getOrCreateVehicleType("Xe đạp", "Xe đạp thường, xe đạp điện");
         VehicleType xeMay = getOrCreateVehicleType("Xe máy", "Xe gắn máy 2 bánh các loại");

@@ -8,6 +8,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import java.util.concurrent.ThreadLocalRandom;
+import com.smartparking.backend.service.BlacklistService;
+import com.smartparking.backend.service.EmergencyService;
+
 import jakarta.servlet.http.HttpServletRequest;
 import com.smartparking.backend.entity.Payment;
 import com.smartparking.backend.entity.Reservation;
@@ -85,6 +88,8 @@ public class DriverController {
     private final PaymentRepository paymentRepository;
     private final VnPayService vnPayService;
     private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
+    private final BlacklistService blacklistService;
+    private final EmergencyService emergencyService;
 
     public DriverController(
             UserRepository userRepository,
@@ -97,7 +102,9 @@ public class DriverController {
             PaymentRepository paymentRepository,
             ParkingSessionRepository parkingSessionRepository,
             VnPayService vnPayService,
-            UniqueCodeGeneratorService uniqueCodeGeneratorService) {
+            UniqueCodeGeneratorService uniqueCodeGeneratorService,
+            BlacklistService blacklistService,
+            EmergencyService emergencyService) {
         this.userRepository = userRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
         this.pricingRuleRepository = pricingRuleRepository;
@@ -109,6 +116,8 @@ public class DriverController {
         this.parkingSessionRepository = parkingSessionRepository;
         this.vnPayService = vnPayService;
         this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
+        this.blacklistService = blacklistService;
+        this.emergencyService = emergencyService;
     }
 
     /**
@@ -175,10 +184,11 @@ public class DriverController {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy loại xe"));
         if (isBicycleVehicleType(vehicleType)) {
             throw new BusinessException(
-                    "Xe đạp không cần đăng ký biển số. Hệ thống sẽ tự sinh mã dạng 1 chữ cái + 3 số khi đặt chỗ hoặc mua vé.");
+                    "Xe đạp không cần đăng ký biển số. Hệ thống sẽ tự sinh mã dạng BCyymmdd-nnnn khi đặt chỗ hoặc mua vé.");
         }
 
         validatePlateFormatMatchesVehicleType(licensePlate, vehicleType);
+        ensurePlateNotBlacklistedForDriverAction(licensePlate);
 
         java.util.Optional<UserLicensePlate> existingPlate = userLicensePlateRepository.findByUser(currentUser)
                 .stream()
@@ -299,7 +309,7 @@ public class DriverController {
      * - PENDING_PAYMENT
      */
     private void ensurePlateHasNoActiveOrPendingPass(User user, String licensePlate) {
-        boolean existed = parkingPassRepository.findByUser(user)
+        boolean existed = expireExpiredActivePasses(user)
                 .stream()
                 .filter(pass -> LicensePlateUtil.normalize(pass.getLicensePlate()).equals(licensePlate))
                 .anyMatch(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE
@@ -327,10 +337,11 @@ public class DriverController {
      * FE gọi hàm này để hiển thị tab vé tháng/quý/năm trong ProfileTab.
      */
     @GetMapping("/driver/parking-passes")
+    @Transactional
     public ApiResponse<List<Map<String, Object>>> getMyParkingPasses(Authentication authentication) {
         User currentUser = getCurrentUser(authentication);
 
-        List<Map<String, Object>> passes = parkingPassRepository.findByUser(currentUser)
+        List<Map<String, Object>> passes = expireExpiredActivePasses(currentUser)
                 .stream()
                 .map(this::toParkingPassResponse)
                 .toList();
@@ -363,6 +374,7 @@ public class DriverController {
             @Valid @RequestBody RegisterParkingPassRequest request,
             HttpServletRequest httpRequest) {
         User currentUser = getCurrentUser(authentication);
+        emergencyService.ensureNormalOperation();
 
         Building building = buildingRepository.findById(request.getBuildingId())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bãi xe"));
@@ -383,6 +395,7 @@ public class DriverController {
             UserLicensePlate userPlate = ensurePlateBelongsToUser(currentUser, licensePlate);
             ensurePlateVehicleTypeMatches(userPlate, vehicleType);
             ensurePlateHasNoActiveSession(licensePlate);
+            ensurePlateNotBlacklistedForDriverAction(licensePlate);
         }
 
         ensureNoActiveOrPendingPass(currentUser, licensePlate, request.getPassType());
@@ -428,6 +441,7 @@ public class DriverController {
             @PathVariable UUID passId,
             HttpServletRequest httpRequest) {
         User currentUser = getCurrentUser(authentication);
+        emergencyService.ensureNormalOperation();
 
         ParkingPass parkingPass = parkingPassRepository.findById(passId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy vé gửi xe"));
@@ -450,6 +464,14 @@ public class DriverController {
 
         if (parkingPass.getStatus() != ParkingPass.PassStatus.PENDING_PAYMENT) {
             throw new BusinessException("Chỉ có thể thanh toán vé đang chờ thanh toán");
+        }
+
+        if (parkingPass.getStatus() != ParkingPass.PassStatus.PENDING_PAYMENT) {
+            throw new BusinessException("Chỉ có thể thanh toán vé đang chờ thanh toán");
+        }
+
+        if (!isBicycleVehicleType(parkingPass.getVehicleType())) {
+            ensurePlateNotBlacklistedForDriverAction(parkingPass.getLicensePlate());
         }
 
         Map<String, Object> data = createOrReusePassPayment(parkingPass, httpRequest);
@@ -693,8 +715,9 @@ public class DriverController {
 
     /**
      * Xe đạp không có biển số thật.
-     * Với vé tháng/quý/năm, backend tự sinh mã định danh dạng 1 chữ cái + 3 số.
-     * Ví dụ: B482, K017, A905.
+     * Backend lưu mã định danh dạng BCyymmddnnnn.
+     * Frontend chỉ format để hiển thị thành BCyymmdd-nnnn.
+     * Ví dụ lưu DB: BC2607010001; hiển thị: BC260701-0001.
      */
     private String resolveBicycleIdentifier(String input) {
         String normalized = LicensePlateUtil.normalize(input);
@@ -804,6 +827,39 @@ public class DriverController {
     }
 
     /**
+     * Tự chuyển các vé ACTIVE đã quá hạn sang EXPIRED trước khi hiển thị hoặc kiểm
+     * tra trùng vé.
+     * Điều này tránh việc vé cũ hết hạn vẫn chặn Driver mua gói mới.
+     */
+    private List<ParkingPass> expireExpiredActivePasses(User user) {
+        LocalDate today = LocalDate.now();
+        List<ParkingPass> passes = parkingPassRepository.findByUser(user);
+
+        List<ParkingPass> expiredPasses = passes.stream()
+                .filter(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE)
+                .filter(pass -> pass.getEndDate() != null && pass.getEndDate().isBefore(today))
+                .toList();
+
+        if (!expiredPasses.isEmpty()) {
+            expiredPasses.forEach(pass -> pass.setStatus(ParkingPass.PassStatus.EXPIRED));
+            parkingPassRepository.saveAll(expiredPasses);
+        }
+
+        return passes;
+    }
+
+    /**
+     * Chặn Driver thêm biển số / mua gói / thanh toán tiếp nếu biển số đang nằm
+     * trong blacklist active.
+     */
+    private void ensurePlateNotBlacklistedForDriverAction(String licensePlate) {
+        blacklistService.findActiveByPlate(licensePlate).ifPresent(blacklistPlate -> {
+            throw new BusinessException("Biển số " + LicensePlateUtil.normalize(licensePlate)
+                    + " đang nằm trong blacklist. Không thể đăng ký hoặc thanh toán gói gửi xe.");
+        });
+    }
+
+    /**
      * Kiểm tra driver không tạo trùng vé cho cùng một biển số.
      *
      * Quy tắc:
@@ -814,7 +870,7 @@ public class DriverController {
             User user,
             String licensePlate,
             ParkingPass.PassType passType) {
-        boolean existed = parkingPassRepository.findByUser(user)
+        boolean existed = expireExpiredActivePasses(user)
                 .stream()
                 .filter(pass -> LicensePlateUtil.normalize(pass.getLicensePlate()).equals(licensePlate))
                 .anyMatch(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE

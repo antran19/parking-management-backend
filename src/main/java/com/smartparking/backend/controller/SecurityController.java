@@ -13,6 +13,8 @@ import com.smartparking.backend.entity.ExceptionLog;
 import com.smartparking.backend.service.BlacklistService;
 import com.smartparking.backend.service.EmergencyService;
 import com.smartparking.backend.service.SecurityExceptionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -51,6 +53,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/security")
 @PreAuthorize("hasAnyRole('SECURITY', 'MANAGER', 'ADMIN')")
+@Tag(name = "Security", description = "APIs for Security role: exception logging, SOS emergency, and vehicle blacklist management")
 public class SecurityController {
 
     private final SecurityExceptionService securityExceptionService;
@@ -77,6 +80,7 @@ public class SecurityController {
      * Báo cáo một sự cố an ninh mới (xe không vé, tranh chấp, v.v.)
      * POST /api/v1/security/exceptions
      */
+    @Operation(summary = "Báo cáo sự cố an ninh", description = "Ghi nhận sự cố mới: xe không vé, tranh chấp, v.v.")
     @PostMapping("/exceptions")
     @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<ExceptionLogResponse>> logException(
@@ -92,6 +96,7 @@ public class SecurityController {
      * đã test postman http://localhost:8080/api/v1/security/exceptions
      * 
      */
+    @Operation(summary = "Xem danh sách sự cố", description = "Toàn bộ sự cố an ninh, mới nhất trước")
     @GetMapping("/exceptions")
     @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<ExceptionLogResponse>>> getAllExceptions() {
@@ -103,6 +108,7 @@ public class SecurityController {
      * Cập nhật sự cố an ninh đã ghi nhận (VD: sửa loại, mô tả, ảnh đính kèm)
      * PUT /api/v1/security/exceptions/{id}
      */
+    @Operation(summary = "Cập nhật sự cố", description = "Sửa loại, mô tả, ảnh đính kèm của sự cố")
     @PutMapping("/exceptions/{id}")
     @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<ExceptionLogResponse>> updateException(
@@ -116,6 +122,7 @@ public class SecurityController {
      * Đánh dấu sự cố đã được giải quyết
      * PUT /api/v1/security/exceptions/{id}/resolve
      */
+    @Operation(summary = "Giải quyết sự cố", description = "Đánh dấu sự cố đã được xử lý bởi nhân viên")
     @PutMapping("/exceptions/{id}/resolve")
     @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<ExceptionLogResponse>> resolveException(
@@ -145,6 +152,7 @@ public class SecurityController {
      * {
      * }
      */
+    @Operation(summary = "Kích hoạt SOS khẩn cấp", description = "Mở toàn bộ barrier, phát còi báo")
     @PostMapping("/emergency/activate")
     public ResponseEntity<ApiResponse<EmergencyStatusResponse>> activateEmergency(
             @Valid @RequestBody EmergencyActivateRequest request) {
@@ -158,6 +166,7 @@ public class SecurityController {
      * 
      * ĐÃ TEST http://localhost:8080/api/v1/security/emergency/deactivate
      */
+    @Operation(summary = "Hủy SOS", description = "Hệ thống trở lại bình thường")
     @PostMapping("/emergency/deactivate")
     public ResponseEntity<ApiResponse<EmergencyStatusResponse>> deactivateEmergency(
             @Valid @RequestBody EmergencyDeactivateRequest request) {
@@ -172,6 +181,7 @@ public class SecurityController {
      * 
      * ĐÃ TEST http://localhost:8080/api/v1/security/emergency/status
      */
+    @Operation(summary = "Trạng thái SOS hiện tại", description = "Tất cả role đều xem được")
     @GetMapping("/emergency/status")
     @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'DRIVER', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<EmergencyStatusResponse>> getEmergencyStatus() {
@@ -183,6 +193,7 @@ public class SecurityController {
      * Lấy toàn bộ lịch sử SOS
      * GET /api/v1/security/emergency/history
      */
+    @Operation(summary = "Lịch sử SOS", description = "Toàn bộ lịch sử kích hoạt/hủy SOS")
     @GetMapping("/emergency/history")
     public ResponseEntity<ApiResponse<List<EmergencyStatusResponse>>> getEmergencyHistory() {
         List<EmergencyStatusResponse> history = emergencyService.getHistory();
@@ -194,6 +205,7 @@ public class SecurityController {
      * Lấy cấu hình SOS hiện tại (sosEnabled đang bật hay tắt)
      * GET /api/v1/security/emergency/settings
      */
+    @Operation(summary = "Lấy cấu hình SOS", description = "Kiểm tra SOS đang bật hay tắt")
     @GetMapping("/emergency/settings")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getEmergencySettings() {
         boolean sosEnabled = emergencyService.isSosEnabled();
@@ -206,6 +218,7 @@ public class SecurityController {
      * PUT /api/v1/security/emergency/settings
      * Body: { "sosEnabled": true/false }
      */
+    @Operation(summary = "Cập nhật cấu hình SOS", description = "Bật hoặc tắt tính năng SOS")
     @PutMapping("/emergency/settings")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateEmergencySettings(
             @RequestBody Map<String, Object> body) {
@@ -231,6 +244,7 @@ public class SecurityController {
      * Lấy toàn bộ danh sách đen biển số xe
      * GET /api/v1/security/blacklist
      */
+    @Operation(summary = "Xem danh sách đen", description = "Toàn bộ biển số bị chặn")
     @GetMapping("/blacklist")
     public ResponseEntity<ApiResponse<List<BlacklistPlateResponse>>> getBlacklist() {
         List<BlacklistPlateResponse> list = blacklistService.getAllBlacklist();
@@ -241,6 +255,7 @@ public class SecurityController {
      * Thêm một biển số xe vào danh sách đen
      * POST /api/v1/security/blacklist
      */
+    @Operation(summary = "Thêm biển số vào danh sách đen", description = "Blacklist biển số xe vi phạm")
     @PostMapping("/blacklist")
     public ResponseEntity<ApiResponse<BlacklistPlateResponse>> addBlacklistPlate(
             @Valid @RequestBody BlacklistPlateRequest request) {
@@ -252,6 +267,7 @@ public class SecurityController {
      * Cập nhật thông tin một bản ghi blacklist (biển số, lý do, mô tả)
      * PUT /api/v1/security/blacklist/{id}
      */
+    @Operation(summary = "Cập nhật blacklist", description = "Sửa biển số, lý do, mô tả")
     @PutMapping("/blacklist/{id}")
     public ResponseEntity<ApiResponse<BlacklistPlateResponse>> updateBlacklistPlate(
             @PathVariable UUID id,
@@ -264,6 +280,7 @@ public class SecurityController {
      * Gỡ bỏ một biển số xe khỏi danh sách đen
      * DELETE /api/v1/security/blacklist/{id}
      */
+    @Operation(summary = "Gỡ biển số khỏi blacklist", description = "Chỉ Admin/Manager mới được gỡ")
     @DeleteMapping("/blacklist/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     public ResponseEntity<ApiResponse<BlacklistPlateResponse>> removeBlacklistPlate(

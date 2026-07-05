@@ -6,6 +6,8 @@ import com.smartparking.backend.entity.PricingRule;
 import com.smartparking.backend.entity.Zone;
 import com.smartparking.backend.repository.*;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/v1/public")
+@Tag(name = "Public Info", description = "Public APIs for parking lot information, availability and pricing — no authentication required")
 public class PublicInfoController {
 
     private final ZoneRepository zoneRepository;
@@ -45,6 +48,7 @@ public class PublicInfoController {
      * - Bảng giá cơ bản (giờ/ngày/tháng theo loại xe)
      * - Thông tin tòa nhà (tên, địa chỉ, giờ hoạt động)
      */
+    @Operation(summary = "Thông tin tổng hợp bãi xe công khai", description = "Trả về thông tin tòa nhà, sức chứa theo tầng và bảng giá — không cần đăng nhập")
     @GetMapping("/parking-info")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getPublicParkingInfo() {
 

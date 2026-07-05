@@ -49,6 +49,8 @@ import com.smartparking.backend.util.LicensePlateUtil;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 
 /**
@@ -68,6 +70,7 @@ import lombok.Data;
 @RestController
 @RequestMapping("/api/v1")
 @PreAuthorize("hasAnyRole('DRIVER', 'MANAGER', 'ADMIN')")
+@Tag(name = "Driver", description = "APIs for Driver: license plates, pricing plans, parking passes, and VNPay payment")
 public class DriverController {
 
     private final UserRepository userRepository;
@@ -117,6 +120,7 @@ public class DriverController {
      * Method: GET
      * Endpoint: /api/v1/driver/plates
      */
+    @Operation(summary = "Lấy danh sách biển số", description = "Trả về tất cả biển số của driver đang đăng nhập")
     @GetMapping("/driver/plates")
     public ApiResponse<List<Map<String, Object>>> getMyPlates(Authentication authentication) {
         User currentUser = getCurrentUser(authentication);
@@ -145,6 +149,7 @@ public class DriverController {
      * NOTE:
      * FE dùng dữ liệu này để hiển thị giá gửi xe theo loại xe.
      */
+    @Operation(summary = "Lấy bảng giá gửi xe", description = "Trả về tất cả pricing rules theo loại xe")
     @GetMapping("/driver/pricing-plans")
     public ApiResponse<List<PricingRule>> getPricingPlans() {
         List<PricingRule> pricingPlans = pricingRuleRepository.findAll();
@@ -164,6 +169,7 @@ public class DriverController {
      * - ProfileTab.jsx: thêm biển số trong hồ sơ
      * - DriverMapping.jsx: tự thêm biển số trước khi đặt chỗ nếu user nhập biển mới
      */
+    @Operation(summary = "Thêm biển số mới", description = "Driver đăng ký biển số xe gắn với loại xe")
     @PostMapping("/driver/plates")
     public ApiResponse<Map<String, Object>> addPlate(
             Authentication authentication,
@@ -237,6 +243,7 @@ public class DriverController {
      * Không cho driver xóa biển số của người khác.
      */
 
+    @Operation(summary = "Xóa biển số", description = "Driver xóa biển số của mình (chặn nếu đang có session/reservation)")
     @DeleteMapping("/driver/plates")
     public ApiResponse<String> deletePlate(
             Authentication authentication,
@@ -326,6 +333,7 @@ public class DriverController {
      *
      * FE gọi hàm này để hiển thị tab vé tháng/quý/năm trong ProfileTab.
      */
+    @Operation(summary = "Lấy danh sách vé gửi xe", description = "Trả về vé tháng/quý/năm của driver đang đăng nhập")
     @GetMapping("/driver/parking-passes")
     public ApiResponse<List<Map<String, Object>>> getMyParkingPasses(Authentication authentication) {
         User currentUser = getCurrentUser(authentication);
@@ -356,6 +364,7 @@ public class DriverController {
      * Vé mới tạo sẽ ở trạng thái PENDING_PAYMENT.
      * Backend tạo Payment PENDING và trả paymentUrl VNPay sandbox để FE redirect.
      */
+    @Operation(summary = "Đăng ký vé gửi xe mới", description = "Tạo vé tháng/quý/năm và trả link thanh toán VNPay sandbox")
     @PostMapping("/driver/parking-passes")
     @Transactional
     public ApiResponse<Map<String, Object>> registerParkingPass(
@@ -422,6 +431,7 @@ public class DriverController {
      * - Gọi VnPayService để tạo URL thanh toán sandbox và chờ callback kích hoạt
      * vé.
      */
+    @Operation(summary = "Tiếp tục thanh toán vé", description = "Tạo liên kết VNPay cho vé đang chờ thanh toán")
     @PostMapping("/driver/parking-passes/{passId}/pay")
     public ApiResponse<Map<String, Object>> continueParkingPassPayment(
             Authentication authentication,
@@ -466,6 +476,7 @@ public class DriverController {
      * NOTE Quảng - Driver scope:
      * Driver chỉ được hủy đơn của chính mình khi status là PENDING_PAYMENT.
      */
+    @Operation(summary = "Hủy đơn vé chờ thanh toán", description = "Driver hủy vé đang ở trạng thái PENDING_PAYMENT")
     @DeleteMapping("/driver/parking-passes/{passId}/cancel")
     @Transactional
     public ApiResponse<String> cancelPendingParkingPass(

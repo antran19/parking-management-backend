@@ -8,6 +8,8 @@ import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.repository.UserRepository;
 import com.smartparking.backend.service.ReservationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -31,6 +33,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/driver/reservations")
 @PreAuthorize("hasAnyRole('DRIVER', 'MANAGER', 'ADMIN')")
+@Tag(name = "Reservation", description = "APIs for Driver to create, view and cancel parking spot reservations")
 public class ReservationController {
 
     private final ReservationService reservationService;
@@ -49,6 +52,7 @@ public class ReservationController {
      * Method: POST
      * Endpoint: /api/v1/driver/reservations
      */
+    @Operation(summary = "Tạo đặt giữ chỗ", description = "Driver đặt chỗ tại zone với biển số và loại xe")
     @PostMapping
     public ApiResponse<ReservationResponse> createReservation(
             Authentication authentication,
@@ -65,6 +69,7 @@ public class ReservationController {
      * Method: GET
      * Endpoint: /api/v1/driver/reservations
      */
+    @Operation(summary = "Xem danh sách đặt chỗ", description = "Lấy tất cả reservation của driver đang đăng nhập")
     @GetMapping
     public ApiResponse<List<ReservationResponse>> getMyReservations(Authentication authentication) {
         User currentUser = getCurrentUser(authentication);
@@ -79,6 +84,7 @@ public class ReservationController {
      * Method: DELETE
      * Endpoint: /api/v1/driver/reservations/{id}
      */
+    @Operation(summary = "Hủy đặt chỗ", description = "Driver hủy reservation của mình theo ID")
     @DeleteMapping("/{id}")
     public ApiResponse<ReservationResponse> cancelReservation(
             Authentication authentication,

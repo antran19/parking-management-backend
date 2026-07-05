@@ -28,6 +28,8 @@ import com.smartparking.backend.entity.Reservation;
 import com.smartparking.backend.entity.ParkingPass;
 import com.smartparking.backend.repository.ReservationRepository;
 import com.smartparking.backend.repository.ParkingPassRepository;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,7 @@ import com.smartparking.backend.dto.response.EligibleZoneResponse;
  */
 @RestController
 @RequestMapping("/api/v1")
+@Tag(name = "Parking Session", description = "APIs for Staff check-in/check-out and Driver session management")
 public class SessionController {
 
     private final ParkingSessionService parkingSessionService;
@@ -78,6 +81,7 @@ public class SessionController {
     /**
      * Lấy danh sách đặt chỗ của bãi xe dành cho Staff/Manager/Admin xem.
      */
+    @Operation(summary = "Lấy danh sách đặt chỗ", description = "Staff/Manager/Admin xem reservation theo zone hoặc status")
     @GetMapping("/staff/reservations")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<ReservationResponse>>> getAllReservations(
@@ -90,6 +94,7 @@ public class SessionController {
     /**
      * Lấy dữ liệu thống kê tổng quan cho Staff Dashboard.
      */
+    @Operation(summary = "Thống kê tổng quan Staff", description = "Dữ liệu dashboard: số xe, doanh thu, công suất")
     @GetMapping("/staff/dashboard")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getStaffDashboard() {
@@ -99,6 +104,7 @@ public class SessionController {
     /**
      * Check-in xe vào bãi — chỉ STAFF trở lên.
      */
+    @Operation(summary = "Check-in xe vào bãi", description = "Tạo phiên gửi xe mới — chỉ STAFF trở lên")
     @PostMapping("/staff/sessions/checkin")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> checkIn(
@@ -111,6 +117,7 @@ public class SessionController {
     /**
      * Check-in xe vào Zone (Check-in lần 2) — chỉ STAFF trở lên.
      */
+    @Operation(summary = "Check-in xe vào Zone", description = "Xác nhận xe đã vào zone được chỉ định")
     @PostMapping("/staff/sessions/zone-entry")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> checkInZone(
@@ -123,6 +130,7 @@ public class SessionController {
     /**
      * Check-out xe ra khỏi Zone (Check-out lần 2) — chỉ STAFF trở lên.
      */
+    @Operation(summary = "Check-out xe ra khỏi Zone", description = "Xác nhận xe đã rời zone")
     @PostMapping("/staff/sessions/zone-exit")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> checkOutZone(
@@ -135,6 +143,7 @@ public class SessionController {
     /**
      * Lấy danh sách phân khu khả dụng để thay đổi gợi ý đỗ xe.
      */
+    @Operation(summary = "Lấy danh sách zone khả dụng", description = "Trả về các zone còn chỗ phù hợp với loại xe")
     @GetMapping("/staff/sessions/{sessionId}/eligible-zones")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<List<EligibleZoneResponse>>> getEligibleZones(
@@ -146,6 +155,7 @@ public class SessionController {
     /**
      * Thay đổi phân khu đỗ xe chỉ định cho session.
      */
+    @Operation(summary = "Thay đổi zone đỗ xe", description = "Chuyển session sang zone khác")
     @PutMapping("/staff/sessions/{sessionId}/change-zone")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> changeSessionZone(
@@ -158,6 +168,7 @@ public class SessionController {
     /**
      * Check-out xe ra bãi — chỉ STAFF trở lên.
      */
+    @Operation(summary = "Check-out xe ra bãi", description = "Kết thúc phiên gửi xe và tính phí")
     @PostMapping("/staff/sessions/checkout")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> checkOut(
@@ -171,6 +182,7 @@ public class SessionController {
      * /**
      * Cập nhật URL ảnh lên phiên đỗ xe (sau khi Check-in/Check-out thành công).
      */
+    @Operation(summary = "Cập nhật ảnh phiên gửi xe", description = "Upload URL ảnh biển số/khuôn mặt từ Cloudinary")
     @PutMapping("/staff/sessions/{sessionId}/images")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<Void>> updateSessionImages(
@@ -191,6 +203,7 @@ public class SessionController {
     // * Lấy toàn bộ danh sách phiên gửi xe cho Staff/Manager/Admin xem (hỗ trợ phân
     // * trang và tìm kiếm).
     // */
+    @Operation(summary = "Lịch sử phiên gửi xe (Staff)", description = "Hỗ trợ phân trang và lọc theo biển số/status")
     @GetMapping("/staff/sessions/history")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN', 'SECURITY')")
     public ResponseEntity<ApiResponse<?>> getSessionsHistory(
@@ -228,6 +241,7 @@ public class SessionController {
      * Driver khởi tạo thanh toán VNPay sandbox để check-out phiên gửi xe đang hoạt
      * động.
      */
+    @Operation(summary = "Thanh toán VNPay check-out", description = "Driver khởi tạo thanh toán VNPay sandbox cho phiên gửi xe")
     @PostMapping("/driver/sessions/checkout/vnpay")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<Map<String, Object>>> initiateVnPayCheckout(
@@ -244,6 +258,7 @@ public class SessionController {
      * Xem session đang hoạt động của Driver — Mọi authenticated user (Driver/Staff)
      * có quyền truy cập.
      */
+    @Operation(summary = "Xem phiên gửi xe đang hoạt động (Driver)", description = "Driver xem session đang mở của mình theo biển số")
     @GetMapping("/driver/sessions/active")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> getActiveSession(
@@ -259,6 +274,7 @@ public class SessionController {
     /**
      * Xem session đang hoạt động dành cho Staff tra cứu (không bị giới hạn biển số xe như Driver)
      */
+    @Operation(summary = "Xem phiên gửi xe đang hoạt động (Staff)", description = "Staff tra cứu session theo biển số bất kỳ")
     @GetMapping("/staff/sessions/active")
     @PreAuthorize("hasAnyRole('STAFF', 'SECURITY', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<SessionResponse>> getStaffActiveSession(
@@ -275,6 +291,7 @@ public class SessionController {
      * Lịch sử gửi xe theo biển số — Mọi authenticated user (Driver/Staff) có quyền
      * truy cập.
      */
+    @Operation(summary = "Lịch sử gửi xe theo biển số (Driver)", description = "Driver xem lịch sử các phiên gửi xe của mình")
     @GetMapping("/driver/sessions/history")
     @PreAuthorize("hasAnyRole('DRIVER', 'STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<java.util.List<SessionResponse>>> getSessionHistory(

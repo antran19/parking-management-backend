@@ -7,7 +7,7 @@ on:
     branches: [develop]
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,8 +21,13 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Build & Compile
-        run: mvn clean compile -q
+      - name: Build, Test & Coverage
+        run: mvn clean verify -q
 
-      - name: Verify build artifact
-        run: echo "✅ Backend compiled successfully"
+      - name: Upload JaCoCo coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+          retention-days: 14

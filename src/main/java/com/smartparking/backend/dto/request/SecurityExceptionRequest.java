@@ -16,6 +16,7 @@ public class SecurityExceptionRequest {
 
     private String description;
     private String licensePlate;
+    private String vehicleType;
     private UUID handledByUserId;
     private List<String> imageUrls;
     private ExceptionLog.ExceptionStatus status;

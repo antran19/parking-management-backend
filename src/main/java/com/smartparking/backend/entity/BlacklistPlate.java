@@ -29,6 +29,9 @@ public class BlacklistPlate {
     @Column(name = "normalized_plate", nullable = false, length = 20)
     private String normalizedPlate;
 
+    @Column(name = "vehicle_type", length = 50)
+    private String vehicleType;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private BlacklistReason reason;

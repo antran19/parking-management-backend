@@ -83,6 +83,7 @@ public class BlacklistService {
         BlacklistPlate blacklistPlate = BlacklistPlate.builder()
                 .licensePlate(request.getLicensePlate())
                 .normalizedPlate(normalizedPlate)
+                .vehicleType(request.getVehicleType())
                 .reason(request.getReason())
                 .description(request.getDescription())
                 .imageUrls(request.getImageUrls())
@@ -129,6 +130,9 @@ public class BlacklistService {
         }
         if (request.getDescription() != null) {
             plate.setDescription(request.getDescription());
+        }
+        if (request.getVehicleType() != null) {
+            plate.setVehicleType(request.getVehicleType());
         }
         if (request.getImageUrls() != null) {
             plate.setImageUrls(request.getImageUrls());
@@ -266,6 +270,7 @@ public class BlacklistService {
                 .id(blacklistPlate.getId())
                 .licensePlate(blacklistPlate.getLicensePlate())
                 .normalizedPlate(blacklistPlate.getNormalizedPlate())
+                .vehicleType(blacklistPlate.getVehicleType())
                 .reason(blacklistPlate.getReason())
                 .description(blacklistPlate.getDescription())
                 .imageUrls(blacklistPlate.getImageUrls())

@@ -29,6 +29,9 @@ public class ExceptionLog {
     @Column(name = "license_plate", length = 20)
     private String licensePlate;
 
+    @Column(name = "vehicle_type", length = 50)
+    private String vehicleType;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 

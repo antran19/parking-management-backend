@@ -55,6 +55,7 @@ public class SecurityExceptionService {
                 .exceptionType(request.getExceptionType())
                 .description(request.getDescription())
                 .licensePlate(request.getLicensePlate())
+                .vehicleType(request.getVehicleType())
                 .handledBy(handledBy)
                 .imageUrls(request.getImageUrls())
                 .status(ExceptionLog.ExceptionStatus.PENDING)
@@ -84,6 +85,10 @@ public class SecurityExceptionService {
             exceptionLog.setLicensePlate(request.getLicensePlate());
         }
 
+        if (request.getVehicleType() != null) {
+            exceptionLog.setVehicleType(request.getVehicleType());
+        }
+
         if (request.getImageUrls() != null) {
             exceptionLog.setImageUrls(request.getImageUrls());
         }
@@ -104,7 +109,7 @@ public class SecurityExceptionService {
      * Đánh dấu sự cố đã được giải quyết
      */
     @Transactional
-    public ExceptionLogResponse resolveException(UUID id, UUID handledByUserId) {
+    public ExceptionLogResponse resolveException(UUID id, UUID handledByUserId, String resolutionNote, List<String> imageUrls) {
         ExceptionLog exceptionLog = exceptionLogRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Sự cố không tồn tại"));
 
@@ -114,6 +119,20 @@ public class SecurityExceptionService {
         exceptionLog.setStatus(ExceptionLog.ExceptionStatus.RESOLVED);
         exceptionLog.setResolvedAt(LocalDateTime.now());
         exceptionLog.setHandledBy(handledBy);
+
+        if (resolutionNote != null && !resolutionNote.isBlank()) {
+            String existingDesc = exceptionLog.getDescription() == null ? "" : exceptionLog.getDescription() + "\n\n";
+            exceptionLog.setDescription(existingDesc + "=== GHI CHÚ GIẢI QUYẾT ===\n" + resolutionNote);
+        }
+
+        if (imageUrls != null && !imageUrls.isEmpty()) {
+            List<String> existing = exceptionLog.getImageUrls();
+            if (existing != null) {
+                existing.addAll(imageUrls);
+            } else {
+                exceptionLog.setImageUrls(imageUrls);
+            }
+        }
 
         ExceptionLog saved = exceptionLogRepository.save(exceptionLog);
         return mapToResponse(saved);
@@ -133,8 +152,8 @@ public class SecurityExceptionService {
     private ExceptionLogResponse mapToResponse(ExceptionLog entity) {
         return ExceptionLogResponse.builder()
                 .id(entity.getId())
-
                 .licensePlate(entity.getLicensePlate())
+                .vehicleType(entity.getVehicleType())
                 .exceptionType(entity.getExceptionType() != null ? entity.getExceptionType().name() : null)
                 .description(entity.getDescription())
                 .handledBy(entity.getHandledBy() != null ? entity.getHandledBy().getFullName() : null)

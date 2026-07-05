@@ -16,6 +16,7 @@ import java.util.UUID;
 public class ExceptionLogResponse {
     private UUID id;
     private String licensePlate;
+    private String vehicleType;
     private String exceptionType;
     private String description;
     private String handledBy;

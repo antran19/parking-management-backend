@@ -14,6 +14,8 @@ public class BlacklistPlateRequest {
     @NotBlank(message = "Biển số không được để trống")
     private String licensePlate;
 
+    private String vehicleType;
+
     @NotNull(message = "Lý do blacklist không được để trống")
     private BlacklistPlate.BlacklistReason reason;
 

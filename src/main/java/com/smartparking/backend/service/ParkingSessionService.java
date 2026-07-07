@@ -33,7 +33,6 @@ import java.util.Optional;
 import com.smartparking.backend.dto.response.EligibleZoneResponse;
 import java.util.stream.Collectors;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Service xử lý các phiên gửi xe (Parking Session) - Nghiệp vụ cốt lõi của hệ
@@ -374,6 +373,18 @@ public class ParkingSessionService {
         if (request.getZoneId() != null) {
             assignedZone = zoneRepository.findById(request.getZoneId())
                     .orElseThrow(() -> new ResourceNotFoundException("Phân khu được chọn không tồn tại"));
+            
+            // Kiểm tra trạng thái hoạt động của Zone được chọn thủ công
+            if (assignedZone.getStatus() == Zone.ZoneStatus.MAINTENANCE || assignedZone.getStatus() == Zone.ZoneStatus.LOCKED) {
+                throw new BusinessException("Phân khu " + assignedZone.getZoneName() + " đang không hoạt động (Trạng thái: " + assignedZone.getStatus() + ").");
+            }
+
+            // Kiểm tra sức chứa (chỉ chặn nếu Zone đầy và xe này không phải là xe đã đặt chỗ trước tại chính Zone này)
+            int occupied = assignedZone.getCurrentCount() + assignedZone.getReservedCount();
+            boolean isUserReservedForThisZone = reservation != null && reservation.getZone().getId().equals(assignedZone.getId());
+            if (!isUserReservedForThisZone && occupied >= assignedZone.getCapacity()) {
+                throw new BusinessException("Phân khu " + assignedZone.getZoneName() + " đã đầy hoặc không còn chỗ trống.");
+            }
         } else if (reservation != null) {
             assignedZone = reservation.getZone();
         } else {
@@ -429,15 +440,30 @@ public class ParkingSessionService {
 
         // Thực hiện lưu thật vào DB (nếu không phải preview)
         if (request.getZoneId() != null) {
-            // Đổi chỗ từ reservedCount sang currentCount nếu là zone của reservation
-            if (reservation != null && reservation.getZone().getId().equals(assignedZone.getId())) {
-                if (assignedZone.getReservedCount() > 0) {
-                    assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
+            if (reservation != null) {
+                if (reservation.getZone().getId().equals(assignedZone.getId())) {
+                    // Đúng zone đã đặt: Đổi chỗ từ reservedCount sang currentCount
+                    if (assignedZone.getReservedCount() > 0) {
+                        assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
+                    }
+                } else {
+                    // Khác zone đã đặt: Giải phóng reservedCount ở Zone đặt trước ban đầu
+                    Zone originalReservedZone = reservation.getZone();
+                    if (originalReservedZone.getReservedCount() > 0) {
+                        originalReservedZone.setReservedCount(originalReservedZone.getReservedCount() - 1);
+                        
+                        // Cập nhật lại status của Zone cũ nếu nó đang FULL mà nay bớt đi 1 reserved spot
+                        if (originalReservedZone.getStatus() == Zone.ZoneStatus.FULL
+                                && (originalReservedZone.getCurrentCount() + originalReservedZone.getReservedCount() < originalReservedZone.getCapacity())) {
+                            originalReservedZone.setStatus(Zone.ZoneStatus.ACTIVE);
+                        }
+                        zoneRepository.save(originalReservedZone);
+                    }
                 }
             }
             assignedZone.setCurrentCount(assignedZone.getCurrentCount() + 1);
         } else if (reservation != null) {
-            // Đổi chỗ từ reservedCount sang currentCount
+            // Đổi chỗ từ reservedCount sang currentCount (Trường hợp tự động lấy zone từ reservation)
             if (assignedZone.getReservedCount() > 0) {
                 assignedZone.setReservedCount(assignedZone.getReservedCount() - 1);
             }
@@ -612,6 +638,19 @@ public class ParkingSessionService {
             throw new BusinessException("Không tìm thấy thông tin phân khu đỗ xe cho phiên gửi này.");
         }
 
+        Zone targetZone = zoneGate.getZone();
+        if (targetZone == null) {
+            throw new BusinessException(
+                    "Cổng phụ ra " + zoneGate.getGateName() + " chưa được liên kết với Zone đỗ xe cụ thể.");
+        }
+
+        if (!targetZone.getId().equals(currentZone.getId())) {
+            throw new BusinessException("Từ chối ra cổng: Cổng ra này thuộc phân khu " + targetZone.getZoneName()
+                    + " (" + (targetZone.getFloor() != null ? targetZone.getFloor().getFloorName() : "")
+                    + "), trong khi xe của bạn đang đỗ tại phân khu " + currentZone.getZoneName()
+                    + " (" + (currentZone.getFloor() != null ? currentZone.getFloor().getFloorName() : "") + ").");
+        }
+
         // 5. Cập nhật Session
         session.setExitZoneGate(zoneGate);
         session.setZoneExitTime(LocalDateTime.now());
@@ -691,13 +730,27 @@ public class ParkingSessionService {
         // Bước 3: Tính phí
         BigDecimal totalFee = calculateSessionFee(session, durationMinutes);
 
-        // Bước 4: Cập nhật thông tin phiên gửi
+        // Bước 4: Cập nhật thông tin phiên gửi và đối soát biển số
         session.setExitTime(exitTime);
         session.setZoneExitTime(exitTime);
         session.setExitMainGate(exitGate);
         session.setDurationMinutes(durationMinutes);
         session.setTotalFee(totalFee);
         session.setStatus(SessionStatus.COMPLETED);
+
+        // Lưu thông tin biển số lúc ra và cờ đối soát nếu lệch (Sửa lỗi 10)
+        String exitPlate = request.getExitPlate();
+        boolean isBicycle = isBicycleVehicleType(session.getVehicleType())
+                || (session.getLicensePlate() != null && session.getLicensePlate().startsWith("BC"));
+        if (exitPlate != null && !exitPlate.isBlank() && !isBicycle) {
+            String normalizedExit = LicensePlateUtil.normalize(exitPlate);
+            String normalizedEntry = LicensePlateUtil.normalize(session.getLicensePlate());
+            session.setExitPlate(normalizedExit);
+            session.setIsPlateMismatched(!normalizedExit.equals(normalizedEntry));
+        } else {
+            session.setExitPlate(isBicycle ? session.getLicensePlate() : null);
+            session.setIsPlateMismatched(false);
+        }
 
         // Bước 5: Lưu thông tin Payment
         Payment.PaymentMethod paymentMethod;
@@ -1047,7 +1100,7 @@ public class ParkingSessionService {
                 .sessionId(session.getId())
                 .sessionCode(session.getSessionCode())
                 .sessionCreatedAt(session.getCreatedAt())
-                .licensePlate(LicensePlateUtil.normalize(session.getLicensePlate()))
+                .licensePlate(session.getLicensePlate()) // Đã loại bỏ double normalize (Sửa lỗi 9)
                 .vehicleTypeId(vehicleType != null ? vehicleType.getId() : null)
                 .vehicleType(vehicleType != null ? vehicleType.getName() : null)
                 .entryTime(session.getEntryTime())
@@ -1071,6 +1124,8 @@ public class ParkingSessionService {
                 .entryZoneGateName(session.getEntryZoneGate() != null ? session.getEntryZoneGate().getGateName() : null)
                 .exitZoneGateCode(session.getExitZoneGate() != null ? session.getExitZoneGate().getGateCode() : null)
                 .exitZoneGateName(session.getExitZoneGate() != null ? session.getExitZoneGate().getGateName() : null)
+                .exitPlate(session.getExitPlate())
+                .isPlateMismatched(session.getIsPlateMismatched())
                 .notes(session.getNotes());
 
         if (zone != null) {

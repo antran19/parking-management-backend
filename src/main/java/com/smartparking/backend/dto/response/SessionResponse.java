@@ -79,6 +79,9 @@ public class SessionResponse {
     private Integer wrongZoneCount;
     private Boolean wrongZoneDetected;
 
+    private String exitPlate;
+    private Boolean isPlateMismatched;
+
     private String notes;
 
     // Danh sách phân khu khả dụng (gửi kèm khi ở chế độ preview/tìm kiếm)

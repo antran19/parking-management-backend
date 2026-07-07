@@ -20,4 +20,6 @@ public class SecurityExceptionRequest {
     private UUID handledByUserId;
     private List<String> imageUrls;
     private ExceptionLog.ExceptionStatus status;
+    private String resolution;
+    private List<String> resolutionImageUrls;
 }

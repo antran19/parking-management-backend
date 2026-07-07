@@ -4,7 +4,7 @@ spring:
 
   # ===== DATABASE =====
   datasource:
-    url: jdbc:postgresql://localhost:5432/smartparking_db
+    url: jdbc:postgresql://localhost:5433/smartparking_db
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver

@@ -101,6 +101,14 @@ public class SecurityExceptionService {
             }
         }
 
+        if (request.getResolution() != null) {
+            exceptionLog.setResolution(request.getResolution());
+        }
+
+        if (request.getResolutionImageUrls() != null) {
+            exceptionLog.setResolutionImageUrls(request.getResolutionImageUrls());
+        }
+
         ExceptionLog saved = exceptionLogRepository.save(exceptionLog);
         return mapToResponse(saved);
     }
@@ -109,7 +117,7 @@ public class SecurityExceptionService {
      * Đánh dấu sự cố đã được giải quyết
      */
     @Transactional
-    public ExceptionLogResponse resolveException(UUID id, UUID handledByUserId, String resolutionNote, List<String> imageUrls) {
+    public ExceptionLogResponse resolveException(UUID id, UUID handledByUserId, String resolution, List<String> resolutionImageUrls) {
         ExceptionLog exceptionLog = exceptionLogRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Sự cố không tồn tại"));
 
@@ -119,18 +127,20 @@ public class SecurityExceptionService {
         exceptionLog.setStatus(ExceptionLog.ExceptionStatus.RESOLVED);
         exceptionLog.setResolvedAt(LocalDateTime.now());
         exceptionLog.setHandledBy(handledBy);
+        exceptionLog.setResolution(resolution);
+        exceptionLog.setResolutionImageUrls(resolutionImageUrls);
 
-        if (resolutionNote != null && !resolutionNote.isBlank()) {
+        if (resolution != null && !resolution.isBlank()) {
             String existingDesc = exceptionLog.getDescription() == null ? "" : exceptionLog.getDescription() + "\n\n";
-            exceptionLog.setDescription(existingDesc + "=== GHI CHÚ GIẢI QUYẾT ===\n" + resolutionNote);
+            exceptionLog.setDescription(existingDesc + "=== GHI CHÚ GIẢI QUYẾT ===\n" + resolution);
         }
 
-        if (imageUrls != null && !imageUrls.isEmpty()) {
+        if (resolutionImageUrls != null && !resolutionImageUrls.isEmpty()) {
             List<String> existing = exceptionLog.getImageUrls();
             if (existing != null) {
-                existing.addAll(imageUrls);
+                existing.addAll(resolutionImageUrls);
             } else {
-                exceptionLog.setImageUrls(imageUrls);
+                exceptionLog.setImageUrls(resolutionImageUrls);
             }
         }
 
@@ -159,6 +169,8 @@ public class SecurityExceptionService {
                 .handledBy(entity.getHandledBy() != null ? entity.getHandledBy().getFullName() : null)
                 .status(entity.getStatus() != null ? entity.getStatus().name() : null)
                 .imageUrls(entity.getImageUrls())
+                .resolution(entity.getResolution())
+                .resolutionImageUrls(entity.getResolutionImageUrls())
                 .resolvedAt(entity.getResolvedAt())
                 .createdAt(entity.getCreatedAt())
                 .build();

@@ -136,10 +136,17 @@ public class SecurityController {
             return ResponseEntity.badRequest().body(ApiResponse.error("Thiếu thông tin người xử lý (handledByUserId)"));
         }
 
-        String resolutionNote = body.get("resolutionNote") != null ? String.valueOf(body.get("resolutionNote")) : null;
-        List<String> imageUrls = body.get("imageUrls") != null ? (List<String>) body.get("imageUrls") : null;
+        String resolution = null;
+        if (body.get("resolution") != null) {
+            resolution = String.valueOf(body.get("resolution"));
+        }
 
-        ExceptionLogResponse exceptionLog = securityExceptionService.resolveException(id, handledByUserId, resolutionNote, imageUrls);
+        List<String> resolutionImageUrls = null;
+        if (body.get("resolutionImageUrls") != null) {
+            resolutionImageUrls = (List<String>) body.get("resolutionImageUrls");
+        }
+
+        ExceptionLogResponse exceptionLog = securityExceptionService.resolveException(id, handledByUserId, resolution, resolutionImageUrls);
         return ResponseEntity.ok(ApiResponse.success("Đã đánh dấu sự cố là đã giải quyết", exceptionLog));
     }
 

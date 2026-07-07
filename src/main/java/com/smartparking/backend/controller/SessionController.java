@@ -111,7 +111,7 @@ public class SessionController {
             @Valid @RequestBody CheckInRequest request) {
         SessionResponse response = parkingSessionService.checkIn(request);
         return ResponseEntity.ok(ApiResponse.success(
-                "Check-in thành công. " + response.getGuideMessage(), response));
+                "Check-in thành công.", response));
     }
 
     /**

@@ -114,6 +114,12 @@ public class ParkingSession {
     @Column(name = "exit_face_image_url", length = 255)
     private String exitFaceImageUrl;
 
+    @Column(name = "exit_plate", length = 15)
+    private String exitPlate; // Biển số xe thực tế lúc ra
+
+    @Column(name = "is_plate_mismatched")
+    private Boolean isPlateMismatched; // Cờ cảnh báo lệch biển số ra/vào
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 

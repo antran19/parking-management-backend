@@ -418,6 +418,10 @@ public class ManagerService {
                 .exceptionType(log.getExceptionType() != null ? log.getExceptionType().name() : null)
                 .description(log.getDescription())
                 .handledBy(log.getHandledBy() != null ? log.getHandledBy().getFullName() : null)
+                .status(log.getStatus() != null ? log.getStatus().name() : null)
+                .imageUrls(log.getImageUrls())
+                .resolution(log.getResolution())
+                .resolutionImageUrls(log.getResolutionImageUrls())
                 .resolvedAt(log.getResolvedAt())
                 .createdAt(log.getCreatedAt())
                 .build();
@@ -437,10 +441,6 @@ public class ManagerService {
         return byType;
     }
 
-
-
-
-
     /*
      * =============================================================================
      * ================================
@@ -450,7 +450,8 @@ public class ManagerService {
      */
     public PricingRule createPricingRule(Map<String, Object> body) {
         // Kiểm tra vehicleTypeId bắt buộc
-        if (!body.containsKey("vehicleTypeId") || body.get("vehicleTypeId") == null || body.get("vehicleTypeId").toString().trim().isEmpty()) {
+        if (!body.containsKey("vehicleTypeId") || body.get("vehicleTypeId") == null
+                || body.get("vehicleTypeId").toString().trim().isEmpty()) {
             throw new BusinessException("vehicleTypeId là bắt buộc");
         }
 
@@ -485,8 +486,10 @@ public class ManagerService {
         }
 
         // Kiểm tra xem bảng giá này đã tồn tại chưa (unique constraint)
-        if (pricingRuleRepository.findByBuildingIdAndVehicleTypeIdAndPricingType(buildingId, vehicleTypeId, pricingType).isPresent()) {
-            throw new BusinessException("Biểu phí cho " + vehicleType.getName() + " (" + pricingType.name() + ") đã tồn tại");
+        if (pricingRuleRepository.findByBuildingIdAndVehicleTypeIdAndPricingType(buildingId, vehicleTypeId, pricingType)
+                .isPresent()) {
+            throw new BusinessException(
+                    "Biểu phí cho " + vehicleType.getName() + " (" + pricingType.name() + ") đã tồn tại");
         }
 
         PricingRule rule = PricingRule.builder()
@@ -528,18 +531,19 @@ public class ManagerService {
      */
     // @Transactional
     // public Map<String, Object> createGate(Map<String, Object> body) {
-    //     Building building = buildingRepository.findById(uuid(body, "buildingId"))
-    //             .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
+    // Building building = buildingRepository.findById(uuid(body, "buildingId"))
+    // .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
 
-    //     Gate gate = Gate.builder()
-    //             .building(building)
-    //             .gateCode(text(body, "gateCode"))
-    //             .gateName(text(body, "gateName"))
-    //             .gateType(Gate.GateType.valueOf(textOrDefault(body, "gateType", "MAIN_BOTH").toUpperCase()))
-    //             .isActive(true)
-    //             .build();
+    // Gate gate = Gate.builder()
+    // .building(building)
+    // .gateCode(text(body, "gateCode"))
+    // .gateName(text(body, "gateName"))
+    // .gateType(Gate.GateType.valueOf(textOrDefault(body, "gateType",
+    // "MAIN_BOTH").toUpperCase()))
+    // .isActive(true)
+    // .build();
 
-    //     return gateMap(gateRepository.save(gate));
+    // return gateMap(gateRepository.save(gate));
     // }
 
     @Transactional
@@ -559,10 +563,10 @@ public class ManagerService {
 
     // @Transactional
     // public void deleteGate(UUID id) {
-    //     if (!gateRepository.existsById(id)) {
-    //         throw new ResourceNotFoundException("Gate không tồn tại");
-    //     }
-    //     gateRepository.deleteById(id);
+    // if (!gateRepository.existsById(id)) {
+    // throw new ResourceNotFoundException("Gate không tồn tại");
+    // }
+    // gateRepository.deleteById(id);
     // }
 
     /*

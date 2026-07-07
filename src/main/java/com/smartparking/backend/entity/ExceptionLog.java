@@ -49,6 +49,14 @@ public class ExceptionLog {
     @Column(name = "resolved_at")
     private LocalDateTime resolvedAt;
 
+    @Column(columnDefinition = "TEXT", name = "resolution")
+    private String resolution;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "exception_log_resolution_images", joinColumns = @JoinColumn(name = "exception_log_id"))
+    @Column(name = "image_url")
+    private List<String> resolutionImageUrls; // Ảnh minh chứng giải quyết
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

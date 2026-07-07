@@ -21,6 +21,8 @@ public class ExceptionLogResponse {
     private String handledBy;
     private String status;
     private List<String> imageUrls;
+    private String resolution;
+    private List<String> resolutionImageUrls;
     private LocalDateTime resolvedAt;
     private LocalDateTime createdAt;
 }

@@ -13,4 +13,4 @@ EXPOSE 8080
 ENTRYPOINT ["java", \
             "-Dspring.profiles.active=prod", \
             "-Duser.timezone=Asia/Ho_Chi_Minh", \
-            "-jar", "app.jar"]
+            "-jar", "app.jar"]

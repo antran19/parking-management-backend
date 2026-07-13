@@ -332,7 +332,7 @@ public class ReservationService {
      *
      * Quy tắc:
      * - Không cho đặt trong quá khứ.
-     * - Không cho giữ chỗ quá 2 giờ để tránh khóa zone quá lâu.
+     * - Không cho giữ chỗ quá 1 giờ để tránh khóa zone quá lâu.
      */
     private void validateReservationWindow(LocalDateTime reservedFrom, LocalDateTime reservedTo) {
         LocalDateTime now = LocalDateTime.now();
@@ -341,12 +341,12 @@ public class ReservationService {
             throw new BusinessException("Không thể đặt chỗ trong quá khứ");
         }
 
-        if (reservedFrom.isAfter(now.plusHours(2))) {
-            throw new BusinessException("Chỉ có thể giữ chỗ trong vòng 2 giờ tới");
+        if (reservedFrom.isAfter(now.plusHours(1))) {
+            throw new BusinessException("Chỉ có thể giữ chỗ trong vòng 1 giờ tới");
         }
 
-        if (reservedTo.isAfter(reservedFrom.plusHours(2))) {
-            throw new BusinessException("Thời gian giữ chỗ tối đa là 2 giờ");
+        if (reservedTo.isAfter(reservedFrom.plusHours(1))) {
+            throw new BusinessException("Thời gian giữ chỗ tối đa là 1 giờ");
         }
     }
 

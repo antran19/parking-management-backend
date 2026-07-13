@@ -166,6 +166,19 @@ public class ParkingSessionService {
                         + ")");
             }
 
+            // Kiểm tra khung giờ đặt chỗ còn hiệu lực (vào sớm tối đa 60 phút, không được sau giờ hết hạn)
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime allowedFrom = reservation.getReservedFrom().minusMinutes(60);
+            LocalDateTime allowedTo = reservation.getReservedTo();
+            if (now.isBefore(allowedFrom)) {
+                throw new BusinessException("Chưa đến thời gian đặt chỗ. Vé có hiệu lực từ "
+                        + reservation.getReservedFrom() + " (có thể vào sớm trước 60 phút).");
+            }
+            if (now.isAfter(allowedTo)) {
+                throw new BusinessException("Vé đặt chỗ đã hết hạn (Hạn chót: "
+                        + reservation.getReservedTo() + ").");
+            }
+
             request.setVehicleTypeId(reservation.getVehicleType().getId());
             request.setDriverType("PRE_BOOKED");
         }
@@ -221,6 +234,9 @@ public class ParkingSessionService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng vào không tồn tại"));
         if (!Boolean.TRUE.equals(mainGate.getIsActive())) {
             throw new BusinessException("Cổng vào " + mainGate.getGateName() + " đang tạm khóa hoặc bảo trì.");
+        }
+        if (mainGate.getGateType() != Gate.GateType.MAIN_ENTRY && mainGate.getGateType() != Gate.GateType.MAIN_BOTH) {
+            throw new BusinessException("Cổng " + mainGate.getGateName() + " không phải là cổng vào. Vui lòng chọn cổng vào hợp lệ.");
         }
 
         boolean isBicycle = isBicycleVehicleType(vehicleType);
@@ -505,6 +521,7 @@ public class ParkingSessionService {
                 request.getLicensePlate(), sessionCode,
                 assignedZone.getZoneCode(), assignedZone.getFloor().getFloorName());
 
+        triggerGateOpenAndClose(mainGate.getId());
         return buildSessionResponse(session, assignedZone, null);
     }
 
@@ -603,6 +620,7 @@ public class ParkingSessionService {
         response.setWrongZoneCount(0);
         response.setWrongZoneDetected(false);
         response.setGuideMessage("Đã đỗ đúng Zone gợi ý. Barie mở.");
+        triggerGateOpenAndClose(zoneGate.getId());
         return response;
     }
 
@@ -667,6 +685,7 @@ public class ParkingSessionService {
 
         SessionResponse response = buildSessionResponse(savedSession, currentZone, null);
         response.setGuideMessage("Đã check-out ra khỏi Zone thành công. Barie mở.");
+        triggerGateOpenAndClose(zoneGate.getId());
         return response;
     }
 
@@ -717,10 +736,20 @@ public class ParkingSessionService {
         // Bước 1: Tìm parking session đang ACTIVE
         ParkingSession session = findActiveSession(request);
 
+        // Kiểm tra xe vào zone mà chưa ra zone
+        if (session.getZoneEntryTime() != null && session.getZoneExitTime() == null) {
+            throw new BusinessException("Xe " + session.getLicensePlate() 
+                + " đang đỗ trong phân khu " + session.getZone().getZoneName() 
+                + ". Vui lòng quét ra khỏi phân khu trước khi check-out.");
+        }
+
         Gate exitGate = gateRepository.findById(request.getGateExitId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cổng ra không tồn tại"));
         if (!Boolean.TRUE.equals(exitGate.getIsActive())) {
             throw new BusinessException("Cổng ra " + exitGate.getGateName() + " đang tạm khóa hoặc bảo trì.");
+        }
+        if (exitGate.getGateType() != Gate.GateType.MAIN_EXIT && exitGate.getGateType() != Gate.GateType.MAIN_BOTH) {
+            throw new BusinessException("Cổng " + exitGate.getGateName() + " không phải là cổng ra. Vui lòng chọn cổng ra hợp lệ.");
         }
 
         // Bước 2: Tính thời gian gửi
@@ -755,8 +784,12 @@ public class ParkingSessionService {
         // Bước 5: Lưu thông tin Payment
         Payment.PaymentMethod paymentMethod;
         try {
-            paymentMethod = Payment.PaymentMethod.valueOf(
-                    request.getPaymentMethod() != null ? request.getPaymentMethod().toUpperCase() : "CASH");
+            String methodStr = request.getPaymentMethod() != null ? request.getPaymentMethod().toUpperCase() : "CASH";
+            if (methodStr.equals("VIETQR")) {
+                paymentMethod = Payment.PaymentMethod.VIETQR;
+            } else {
+                paymentMethod = Payment.PaymentMethod.valueOf(methodStr);
+            }
         } catch (IllegalArgumentException e) {
             paymentMethod = Payment.PaymentMethod.CASH;
         }
@@ -784,6 +817,7 @@ public class ParkingSessionService {
                 session.getLicensePlate(), session.getSessionCode(),
                 durationMinutes, totalFee);
 
+        triggerGateOpenAndClose(exitGate.getId());
         return buildSessionResponse(session, zone, "COMPLETED");
     }
 
@@ -903,6 +937,13 @@ public class ParkingSessionService {
         lookup.setLicensePlate(body.get("licensePlate"));
         ParkingSession session = findActiveSession(lookup);
 
+        // Kiểm tra xe vào zone mà chưa ra zone
+        if (session.getZoneEntryTime() != null && session.getZoneExitTime() == null) {
+            throw new BusinessException("Xe " + session.getLicensePlate() 
+                + " đang đỗ trong phân khu " + session.getZone().getZoneName() 
+                + ". Vui lòng quét ra khỏi phân khu trước khi check-out.");
+        }
+
         LocalDateTime exitTime = LocalDateTime.now();
         int durationMinutes = calculateDurationMinutes(session, exitTime);
         BigDecimal calculatedFee = calculateSessionFee(session, durationMinutes);
@@ -919,14 +960,14 @@ public class ParkingSessionService {
         String orderCode = "SESSION-" + session.getId().toString().replace("-", "").substring(0, 16).toUpperCase();
 
         Payment payment = paymentRepository.findByReferenceTypeAndReferenceId("SESSION", session.getId()).stream()
-                .filter(p -> p.getPaymentMethod() == Payment.PaymentMethod.ONLINE)
+                .filter(p -> p.getPaymentMethod() == Payment.PaymentMethod.ONLINE || p.getPaymentMethod() == Payment.PaymentMethod.VNPAY)
                 .filter(p -> p.getStatus() != Payment.PaymentStatus.COMPLETED)
                 .findFirst()
                 .orElseGet(() -> paymentRepository.save(Payment.builder()
                         .referenceType("SESSION")
                         .referenceId(session.getId())
                         .amount(totalFee)
-                        .paymentMethod(Payment.PaymentMethod.ONLINE)
+                        .paymentMethod(Payment.PaymentMethod.VNPAY)
                         .status(Payment.PaymentStatus.PENDING)
                         .transactionId(orderCode)
                         .build()));
@@ -1595,5 +1636,54 @@ public class ParkingSessionService {
                 .replace("đ", "d")
                 .toUpperCase()
                 .trim();
+    }
+
+    private final java.util.concurrent.ConcurrentHashMap<UUID, UUID> gateTokens = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private void triggerGateOpenAndClose(UUID gateId) {
+        if (gateId == null) return;
+        
+        UUID currentToken = UUID.randomUUID();
+        gateTokens.put(gateId, currentToken);
+
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                Gate gate = gateRepository.findById(gateId).orElse(null);
+                if (gate == null) return;
+
+                // 1. Mở barrier
+                gate.setBarrierState("OPEN");
+                gateRepository.save(gate);
+                broadcastGateState(gateId, "OPEN");
+
+                // 2. Chờ 5 giây (giả lập xe đi qua)
+                Thread.sleep(5000);
+
+                // 3. Đóng barrier (chỉ đóng nếu không có xe mới chèn lệnh)
+                if (currentToken.equals(gateTokens.get(gateId))) {
+                    gate = gateRepository.findById(gateId).orElse(null);
+                    if (gate != null) {
+                        if (!emergencyService.isEmergencyActive()) {
+                            gate.setBarrierState("CLOSED");
+                            gateRepository.save(gate);
+                            broadcastGateState(gateId, "CLOSED");
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Lỗi điều khiển barier tự động: ", e);
+            }
+        });
+    }
+
+    private void broadcastGateState(UUID gateId, String barrierState) {
+        try {
+            Map<String, Object> payload = new java.util.HashMap<>();
+            payload.put("gateId", gateId.toString());
+            payload.put("barrierState", barrierState);
+            messagingTemplate.convertAndSend("/topic/gates", payload);
+        } catch (Exception e) {
+            log.warn("Không thể gửi tin nhắn cập nhật cổng: {}", e.getMessage());
+        }
     }
 }

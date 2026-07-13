@@ -542,14 +542,14 @@ public class DriverController {
 
         Payment payment = paymentRepository.findByReferenceTypeAndReferenceId("PASS", pass.getId())
                 .stream()
-                .filter(item -> item.getPaymentMethod() == Payment.PaymentMethod.ONLINE)
+                .filter(item -> item.getPaymentMethod() == Payment.PaymentMethod.ONLINE || item.getPaymentMethod() == Payment.PaymentMethod.VNPAY || item.getPaymentMethod() == Payment.PaymentMethod.NCB)
                 .filter(item -> item.getStatus() != Payment.PaymentStatus.COMPLETED)
                 .findFirst()
                 .orElseGet(() -> Payment.builder()
                         .referenceType("PASS")
                         .referenceId(pass.getId())
                         .amount(amount)
-                        .paymentMethod(Payment.PaymentMethod.ONLINE)
+                        .paymentMethod(Payment.PaymentMethod.NCB)
                         .status(Payment.PaymentStatus.PENDING)
                         .transactionId(generatePassOrderCode(pass.getId()))
                         .build());

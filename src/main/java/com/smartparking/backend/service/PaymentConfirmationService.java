@@ -110,7 +110,7 @@ public class PaymentConfirmationService {
                 .referenceType("SESSION")
                 .referenceId(session.getId())
                 .amount(totalFee)
-                .paymentMethod(Payment.PaymentMethod.BANK_TRANSFER)
+                .paymentMethod(Payment.PaymentMethod.VIETQR)
                 .status(Payment.PaymentStatus.COMPLETED)
                 .paidAt(LocalDateTime.now())
                 .transactionId("VQR-" + System.currentTimeMillis())
@@ -156,7 +156,7 @@ public class PaymentConfirmationService {
                 "totalFee", totalFee.toString(),
                 "durationMinutes", durationMinutes,
                 "vehicleType", session.getVehicleType().getName(),
-                "paymentMethod", "BANK_TRANSFER",
+                "paymentMethod", "VIETQR",
                 "paidAt", LocalDateTime.now().toString(),
                 "exitGate", exitGate != null ? exitGate.getGateName() : "Cổng chính"
         );

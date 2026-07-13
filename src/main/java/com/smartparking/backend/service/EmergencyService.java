@@ -88,7 +88,10 @@ public class EmergencyService {
                 .orElseThrow(() -> new BusinessException("Người kích hoạt không tồn tại"));
 
         List<Gate> gates = gateRepository.findByBuildingId(building.getId());
-        gates.forEach(gate -> gate.setIsActive(true));
+        gates.forEach(gate -> {
+            gate.setIsActive(true);
+            gate.setBarrierState("OPEN");
+        });
         gateRepository.saveAll(gates);
 
         EmergencyEvent event = EmergencyEvent.builder()
@@ -129,6 +132,17 @@ public class EmergencyService {
             event.setNotes(oldNotes + "Deactivation note: " + request.getNotes());
         }
         event = emergencyEventRepository.save(event);
+
+        // Khi hủy SOS, ta đóng toàn bộ các cổng lại
+        if (event.getBuilding() != null) {
+            List<Gate> buildingGates = gateRepository.findByBuildingId(event.getBuilding().getId());
+            buildingGates.forEach(gate -> gate.setBarrierState("CLOSED"));
+            gateRepository.saveAll(buildingGates);
+        } else {
+            List<Gate> allGates = gateRepository.findAll();
+            allGates.forEach(gate -> gate.setBarrierState("CLOSED"));
+            gateRepository.saveAll(allGates);
+        }
 
         EmergencyStatusResponse response = buildResponse(event, false);
         broadcastEmergencyStatus(response, "DEACTIVATED");

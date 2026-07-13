@@ -11,5 +11,6 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", \
-            "-Dspring.profiles.active=prod", \
-            "-jar", "app.jar"]
+    "-Dspring.profiles.active=prod", \
+    "-Duser.timezone=Asia/Ho_Chi_Minh", \
+    "-jar", "app.jar"]

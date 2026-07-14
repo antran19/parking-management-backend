@@ -41,8 +41,8 @@ public class ParkingPass {
     @Column(name = "license_plate", nullable = false, length = 15)
     private String licensePlate;
 
-    @Column(name = "qr_code", unique = true, length = 100)
-    private String qrCode;
+    @Column(name = "parking_pass_code", unique = true, length = 100)
+    private String parkingPassCode;
 
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;

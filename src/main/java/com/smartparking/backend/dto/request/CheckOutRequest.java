@@ -16,7 +16,7 @@ public class CheckOutRequest {
     // Có thể tìm session bằng 1 trong 3 cách (ít nhất 1 field phải có)
     private UUID sessionId;        // ID session trực tiếp
     private String sessionCode;    // Mã vé in trên phiếu (PS20240513001)
-    @Pattern(regexp = "^\\s*$|^\\s*\\d{2}[A-Za-z]{1,2}\\d?-\\d{3}(\\.\\d{2}|\\d{2})\\s*$", message = "Biển số không đúng định dạng. Ví dụ: 51F-123.45, 30A-12345 hoặc 59X1-12345")
+    // Validated in service layer to support bicycle empty plates
     private String licensePlate;   // Tìm theo biển số
 
     @NotNull(message = "Cổng ra không được để trống")
@@ -25,6 +25,4 @@ public class CheckOutRequest {
     // Phương thức thanh toán: CASH, VNPAY, MOMO
     private String paymentMethod = "CASH";
 
-    // Optional: ghi chú ngoại lệ (mất thẻ, sai biển số...)
-    private String exceptionNote;
 }

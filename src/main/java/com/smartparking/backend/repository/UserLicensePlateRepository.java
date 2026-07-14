@@ -14,4 +14,5 @@ public interface UserLicensePlateRepository extends JpaRepository<UserLicensePla
     List<UserLicensePlate> findByUser(User user);
     Optional<UserLicensePlate> findByUserAndLicensePlate(User user, String licensePlate);
     void deleteByUserAndLicensePlate(User user, String licensePlate);
+    List<UserLicensePlate> findByLicensePlate(String licensePlate);
 }

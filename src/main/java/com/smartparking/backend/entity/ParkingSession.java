@@ -28,9 +28,6 @@ public class ParkingSession {
     @JoinColumn(name = "zone_id")
     private Zone zone;
 
-    @Column(name = "qr_code", unique = true, length = 100)
-    private String qrCode;
-
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(name = "driver_type", nullable = false, length = 20)
@@ -104,6 +101,18 @@ public class ParkingSession {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 15)
     private SessionStatus status = SessionStatus.ACTIVE;
+
+    @Column(name = "entry_plate_image_url", length = 255)
+    private String entryPlateImageUrl;
+
+    @Column(name = "entry_face_image_url", length = 255)
+    private String entryFaceImageUrl;
+
+    @Column(name = "exit_plate_image_url", length = 255)
+    private String exitPlateImageUrl;
+
+    @Column(name = "exit_face_image_url", length = 255)
+    private String exitFaceImageUrl;
 
     @Column(columnDefinition = "TEXT")
     private String notes;

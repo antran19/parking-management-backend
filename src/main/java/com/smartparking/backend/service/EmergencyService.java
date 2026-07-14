@@ -103,7 +103,6 @@ public class EmergencyService {
         event = emergencyEventRepository.save(event);
 
         EmergencyStatusResponse response = buildResponse(event, true);
-        broadcastEmergencyStatus(response, "ACTIVATED");
 
         log.warn("SOS ACTIVATED: building={}, by={}", building.getName(), activatedBy.getEmail());
         return response;
@@ -131,7 +130,6 @@ public class EmergencyService {
         event = emergencyEventRepository.save(event);
 
         EmergencyStatusResponse response = buildResponse(event, false);
-        broadcastEmergencyStatus(response, "DEACTIVATED");
 
         log.info("SOS DEACTIVATED: building={}, by={}",
                 event.getBuilding() != null ? event.getBuilding().getName() : "ALL", deactivatedBy.getEmail());
@@ -251,7 +249,7 @@ public class EmergencyService {
     /**
      * Gửi cảnh báo sự kiện SOS qua WebSocket
      */
-    private void broadcastEmergencyStatus(EmergencyStatusResponse response, String action) {
+    public void broadcastEmergencyStatus(EmergencyStatusResponse response, String action) {
         try {
             Map<String, Object> message = new HashMap<>();
             message.put("type", "EMERGENCY_SOS");

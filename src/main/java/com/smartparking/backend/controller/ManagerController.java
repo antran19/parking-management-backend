@@ -5,6 +5,7 @@ import com.smartparking.backend.dto.response.*;
 import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.service.BlacklistService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import com.smartparking.backend.service.ManagerService;
@@ -39,6 +40,7 @@ public class ManagerController {
      * ==============================
      */
     @GetMapping("/dashboard")
+    @Operation(summary = "Lấy dữ liệu tổng quan dashboard cho manager")
     public ResponseEntity<ApiResponse<ManagerDashboardResponse>> getDashboard() {
         return ResponseEntity.ok(ApiResponse.success(managerService.getDashboard()));
     }
@@ -51,6 +53,7 @@ public class ManagerController {
      * ==============================
      */
     @GetMapping("/dashboard/revenue")
+    @Operation(summary = "Lấy báo cáo doanh thu theo khoảng thời gian")
     public ResponseEntity<ApiResponse<RevenueResponse>> getRevenue(
             @RequestParam(required = false) String type,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -59,6 +62,7 @@ public class ManagerController {
     }
 
     @GetMapping("/dashboard/visits")
+    @Operation(summary = "Lấy thống kê lượt xe gửi theo khoảng thời gian")
     public ResponseEntity<ApiResponse<RevenueResponse>> getVisits(
             @RequestParam(required = false) String type,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -74,12 +78,14 @@ public class ManagerController {
      * =================================
      */
     @GetMapping("/dashboard/buildings/{id}/occupancy")
+    @Operation(summary = "Lấy công suất đỗ xe theo tòa nhà")
     public ResponseEntity<ApiResponse<BuildingOccupancyResponse>> getOccupanciesByBuilding(
             @PathVariable("id") UUID buildingId) {
         return ResponseEntity.ok(ApiResponse.success(managerService.getBuildingOccupancy(buildingId)));
     }
 
     @GetMapping("/dashboard/floors/{id}/occupancy")
+    @Operation(summary = "Lấy công suất đỗ xe theo tầng")
     public ResponseEntity<ApiResponse<FloorOccupancyResponse>> getOccupanciesFloor(@PathVariable("id") UUID floorId) {
         return ResponseEntity.ok(ApiResponse.success(managerService.getFloorOccupancy(floorId)));
     }
@@ -92,11 +98,13 @@ public class ManagerController {
      * ================================
      */
     @GetMapping("/dashboard/payments")
+    @Operation(summary = "Lấy danh sách lịch sử giao dịch thanh toán")
     public ResponseEntity<ApiResponse<List<PaymentDetailResponse>>> getPayments() {
         return ResponseEntity.ok(ApiResponse.success(managerService.getPayments()));
     }
 
     @GetMapping("/dashboard/payments/{id}")
+    @Operation(summary = "Xem chi tiết giao dịch thanh toán")
     public ResponseEntity<ApiResponse<PaymentDetailResponse>> getPaymentDetail(@PathVariable UUID id) {
         PaymentDetailResponse d = managerService.getPaymentDetail(id);
         if (d == null)
@@ -112,6 +120,7 @@ public class ManagerController {
      * ================================
      */
     @GetMapping("/security/summary")
+    @Operation(summary = "Lấy thống kê tổng quan về các sự cố an ninh")
     public ResponseEntity<ApiResponse<SecurityIncidentSummary>> getSecuritySummary(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
@@ -119,6 +128,7 @@ public class ManagerController {
     }
 
     @GetMapping("/security/incidents")
+    @Operation(summary = "Lấy danh sách các sự cố an ninh (Exception Logs)")
     public ResponseEntity<ApiResponse<List<ExceptionLogResponse>>> getSecurityIncidents(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to) {
@@ -126,17 +136,20 @@ public class ManagerController {
     }
 
     @GetMapping("/security/incidents/{id}")
+    @Operation(summary = "Xem chi tiết một sự cố an ninh cụ thể")
     public ResponseEntity<ApiResponse<ExceptionLogResponse>> getSecurityIncidentDetail(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(managerService.getSecurityIncidentDetail(id)));
     }
 
     @GetMapping("/blacklist")
+    @Operation(summary = "Lấy danh sách đen các biển số xe bị chặn")
     public ResponseEntity<ApiResponse<List<BlacklistPlateResponse>>> getBlacklistPlate() {
         List<BlacklistPlateResponse> list = blacklistService.getAllBlacklist();
         return ResponseEntity.ok(ApiResponse.success(list));
     }
 
     @PutMapping("/blacklist/{id}/status")
+    @Operation(summary = "Gỡ cấm biển số xe khỏi danh sách đen")
     public ResponseEntity<ApiResponse<BlacklistPlateResponse>> removeFromBlacklist(
         @PathVariable UUID id,
         @RequestBody BlacklistRemoveRequest request) {
@@ -161,6 +174,7 @@ public class ManagerController {
      * ================================
      */
     @PostMapping("/pricing-rules")
+    @Operation(summary = "Tạo mới biểu phí gửi xe")
     public ResponseEntity<ApiResponse<PricingRule>> createPricingRule(@RequestBody Map<String, Object> body) {
         try {
             PricingRule rule = managerService.createPricingRule(body);
@@ -173,6 +187,7 @@ public class ManagerController {
     }
 
     @PutMapping("/pricing-rules/{id}")
+    @Operation(summary = "Cập nhật biểu phí gửi xe")
     public ResponseEntity<ApiResponse<PricingRule>> updatePricingRule(@PathVariable UUID id,
             @RequestBody Map<String, Object> body) {
         return ResponseEntity
@@ -180,6 +195,7 @@ public class ManagerController {
     }
 
     @DeleteMapping("/pricing-rules/{id}")
+    @Operation(summary = "Xóa biểu phí gửi xe")
     public ResponseEntity<ApiResponse<String>> deletePricingRule(@PathVariable UUID id) {
         managerService.deletePricingRule(id);
         return ResponseEntity.ok(ApiResponse.success("Đã xóa bảng giá", id.toString()));
@@ -205,6 +221,7 @@ public class ManagerController {
     // }
     
     @PutMapping("/gate/{id}")
+    @Operation(summary = "Cập nhật thông tin/trạng thái hoạt động của cổng")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateGate(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
         return ResponseEntity.ok(ApiResponse.success("Đã cập nhật cổng", managerService.updateGate(id, body)));
     }

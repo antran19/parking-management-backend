@@ -15,7 +15,10 @@ public class ReservationRequest {
     @NotNull
     private UUID vehicleTypeId;
 
-    @NotBlank
+    /*
+     * Xe máy / ô tô / xe tải: frontend gửi biển số.
+     * Xe đạp: frontend gửi null hoặc rỗng, backend tự tạo mã 4 số.
+     */
     private String licensePlate;
 
     private LocalDateTime reservedFrom;

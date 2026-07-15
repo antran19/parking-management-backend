@@ -1,0 +1,629 @@
+package com.smartparking.backend.service;
+
+import com.smartparking.backend.dto.response.ExceptionLogResponse;
+import com.smartparking.backend.dto.response.*;
+import com.smartparking.backend.entity.*;
+import com.smartparking.backend.entity.ExceptionLog.ExceptionType;
+import com.smartparking.backend.exception.BusinessException;
+import com.smartparking.backend.exception.ResourceNotFoundException;
+import com.smartparking.backend.repository.*;
+import com.smartparking.backend.repository.projection.ChartDataProjection;
+import jakarta.transaction.Transactional;
+import org.springframework.stereotype.Service;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+public class ManagerService {
+
+    private final PaymentRepository paymentRepository;
+    private final ParkingSessionRepository parkingSessionRepository;
+    private final ZoneRepository zoneRepository;
+    private final ExceptionLogRepository exceptionLogRepository;
+    private final BuildingRepository buildingRepository;
+    private final FloorRepository floorRepository;
+    private final VehicleTypeRepository vehicleTypeRepository;
+    private final PricingRuleRepository pricingRuleRepository;
+    private final GateRepository gateRepository;
+    private final ParkingSessionService parkingSessionService;
+    private final EmergencyService emergencyService;
+
+    // Cập nhật Constructor để Spring tự động tiêm (inject) các Repository vào
+    public ManagerService(PaymentRepository paymentRepository,
+            ParkingSessionRepository parkingSessionRepository,
+            ZoneRepository zoneRepository,
+            ExceptionLogRepository exceptionLogRepository,
+            BuildingRepository buildingRepository,
+            FloorRepository floorRepository,
+            VehicleTypeRepository vehicleTypeRepository,
+            PricingRuleRepository pricingRuleRepository,
+            GateRepository gateRepository,
+            ParkingSessionService parkingSessionService,
+            EmergencyService emergencyService) {
+        this.paymentRepository = paymentRepository;
+        this.parkingSessionRepository = parkingSessionRepository;
+        this.zoneRepository = zoneRepository;
+        this.exceptionLogRepository = exceptionLogRepository;
+        this.buildingRepository = buildingRepository;
+        this.floorRepository = floorRepository;
+        this.vehicleTypeRepository = vehicleTypeRepository;
+        this.pricingRuleRepository = pricingRuleRepository;
+        this.gateRepository = gateRepository;
+        this.parkingSessionService = parkingSessionService;
+        this.emergencyService = emergencyService;
+    }
+
+    /*
+     * =============================================================================
+     * ==============================
+     * DASHBOARD TỔNG QUAN
+     * =============================================================================
+     * ==============================
+     */
+    public ManagerDashboardResponse getDashboard() {
+        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+        LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
+
+        // 1. todayRevenue
+        BigDecimal todayRevenue = paymentRepository.sumAmountByStatusAndPaidAtBetween(
+                Payment.PaymentStatus.COMPLETED, startOfDay, endOfDay);
+        if (todayRevenue == null)
+            todayRevenue = BigDecimal.ZERO;
+
+        // 2. activeSessions
+        long activeSessions = parkingSessionRepository.countByStatus(ParkingSession.SessionStatus.ACTIVE);
+
+        // 3. occupancyPercent : sức chứa
+        List<Zone> zones = zoneRepository.findAll();
+        int totalCapacity = zones.stream().mapToInt(Zone::getCapacity).sum();
+        int totalOccupied = zones.stream().mapToInt(z -> z.getCurrentCount() + z.getReservedCount()).sum();
+        double occupancyPercent = totalCapacity > 0
+                ? Math.round((totalOccupied * 100.0 / totalCapacity) * 10.0) / 10.0
+                : 0.0;
+
+        // 4. completedSessionsToday
+        List<ParkingSession> todaySessions = parkingSessionRepository.findByEntryTimeBetween(startOfDay, endOfDay);
+        long completedSessionsToday = todaySessions.stream()
+                .filter(s -> s.getStatus() == ParkingSession.SessionStatus.COMPLETED)
+                .count();
+
+        // 5. securityIncidentsToday
+        List<ExceptionLog> todayLogs = exceptionLogRepository.findByCreatedAtBetween(startOfDay, endOfDay);
+        long securityIncidentsToday = todayLogs.size();
+
+        // 6. activeEmergency
+        boolean activeEmergency = emergencyService.isEmergencyActive();
+
+        return ManagerDashboardResponse.builder()
+                .todayRevenue(todayRevenue)
+                .activeSessions(activeSessions)
+                .occupancyPercent(occupancyPercent)
+                .completedSessionsToday(completedSessionsToday)
+                .securityIncidentsToday(securityIncidentsToday)
+                .activeEmergency(activeEmergency)
+                .build();
+    }
+
+    /*
+     * =============================================================================
+     * ==============================
+     * DOANH THU
+     * =============================================================================
+     * ==============================
+     */
+    /**
+     * Lấy tổng doanh thu trong khoảng từ..đến (nếu null -> hôm nay)
+     */
+    public RevenueResponse getRevenueBetween(
+            String type,
+            LocalDate from,
+            LocalDate to) {
+
+        LocalDateTime start;
+        LocalDateTime end;
+
+        if ("today".equalsIgnoreCase(type)) {
+
+            start = LocalDate.now().atStartOfDay();
+            end = LocalDate.now().atTime(LocalTime.MAX);
+
+        } else if ("month".equalsIgnoreCase(type)) {
+
+            LocalDate firstDay = LocalDate.now().withDayOfMonth(1);
+
+            start = firstDay.atStartOfDay();
+            end = LocalDate.now().atTime(LocalTime.MAX);
+
+        } else if ("year".equalsIgnoreCase(type)) {
+
+            LocalDate firstDay = LocalDate.now().withDayOfYear(1);
+
+            start = firstDay.atStartOfDay();
+            end = LocalDate.now().atTime(LocalTime.MAX);
+
+        } else {
+
+            if (from == null || to == null) {
+                throw new BusinessException("from and to are required");
+            }
+
+            start = from.atStartOfDay();
+            end = to.atTime(LocalTime.MAX);
+        }
+
+        BigDecimal revenue = paymentRepository.sumAmountByStatusAndPaidAtBetween(
+                Payment.PaymentStatus.COMPLETED,
+                start,
+                end);
+
+        long totalSessions = parkingSessionRepository.countByEntryTimeBetween(
+                start,
+                end);
+
+        List<ChartDataProjection> projections;
+        if ("today".equalsIgnoreCase(type)) {
+            projections = paymentRepository.sumRevenueGroupedByHour(start, end);
+        } else if ("month".equalsIgnoreCase(type)) {
+            projections = paymentRepository.sumRevenueGroupedByDay(start, end);
+        } else if ("year".equalsIgnoreCase(type)) {
+            projections = paymentRepository.sumRevenueGroupedByMonth(start, end);
+        } else {
+            projections = paymentRepository.sumRevenueGroupedByDay(start, end);
+        }
+
+        List<ChartDataPoint> chartData = projections.stream()
+                .map(p -> new ChartDataPoint(p.getLabel(), p.getValue()))
+                .collect(Collectors.toList());
+
+        return RevenueResponse.builder()
+                .from(start)
+                .to(end)
+                .totalRevenue(revenue == null ? BigDecimal.ZERO : revenue)
+                .totalSessions(totalSessions)
+                .chartData(chartData)
+                .build();
+    }
+
+    /*
+     * =============================================================================
+     * ===========================
+     * LƯỢT GỬI XE
+     * =============================================================================
+     * ===========================
+     */
+    public RevenueResponse getVisits(String type, LocalDate from, LocalDate to) {
+
+        LocalDateTime start;
+        LocalDateTime end;
+
+        if ("today".equalsIgnoreCase(type)) {
+            start = LocalDate.now().atStartOfDay();
+            end = LocalDate.now().atTime(LocalTime.MAX);
+
+        } else if ("month".equalsIgnoreCase(type)) {
+            start = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+            end = LocalDate.now().atTime(LocalTime.MAX);
+
+        } else if ("year".equalsIgnoreCase(type)) {
+            start = LocalDate.now().withDayOfYear(1).atStartOfDay();
+            end = LocalDate.now().atTime(LocalTime.MAX);
+
+        } else {
+            if (from == null || to == null)
+                throw new BusinessException("from and to are required");
+            start = from.atStartOfDay();
+            end = to.atTime(LocalTime.MAX);
+        }
+
+        long totalSessions = parkingSessionRepository.countByEntryTimeBetween(start, end);
+
+        List<ChartDataProjection> projections;
+        if ("today".equalsIgnoreCase(type)) {
+            projections = parkingSessionRepository.countVisitsGroupedByHour(start, end);
+        } else if ("month".equalsIgnoreCase(type)) {
+            projections = parkingSessionRepository.countVisitsGroupedByDay(start, end);
+        } else if ("year".equalsIgnoreCase(type)) {
+            projections = parkingSessionRepository.countVisitsGroupedByMonth(start, end);
+        } else {
+            projections = parkingSessionRepository.countVisitsGroupedByDay(start, end);
+        }
+
+        List<ChartDataPoint> chartData = projections.stream()
+                .map(p -> new ChartDataPoint(p.getLabel(), p.getValue()))
+                .collect(Collectors.toList());
+
+        return RevenueResponse.builder()
+                .from(start)
+                .to(end)
+                .totalSessions(totalSessions)
+                .totalRevenue(BigDecimal.ZERO) // không dùng, set 0
+                .chartData(chartData)
+                .build();
+    }
+
+    /*
+     * =============================================================================
+     * =================================
+     * CÔNG SUẤT
+     * =============================================================================
+     * =================================
+     */
+    public BuildingOccupancyResponse getBuildingOccupancy(UUID id) {
+
+        Building building = buildingRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Building not found: " + id));
+
+        List<Zone> zones = zoneRepository.findAllByBuildingId(id);
+
+        int totalCapacity = zones.stream()
+                .mapToInt(Zone::getCapacity)
+                .sum();
+
+        int totalOccupied = zones.stream()
+                .mapToInt(z -> z.getCurrentCount() + z.getReservedCount())
+                .sum();
+
+        int available = Math.max(0, totalCapacity - totalOccupied);
+
+        double percent = totalCapacity > 0
+                ? Math.round((totalOccupied * 100.0 / totalCapacity) * 10.0) / 10.0
+                : 0.0;
+
+        List<Floor> floors = floorRepository.findByBuildingId(id);
+
+        return BuildingOccupancyResponse.builder()
+                .id(id.toString())
+                .name(building.getName())
+                .totalCapacity(totalCapacity)
+                .totalOccupied(totalOccupied)
+                .availableSlots(available)
+                .percent(percent)
+                .reportDate(LocalDate.now())
+                .build();
+    }
+
+    public FloorOccupancyResponse getFloorOccupancy(UUID id) {
+
+        Floor floor = floorRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("Floor not found: " + id));
+
+        List<Zone> zones = zoneRepository.findAllByFloorId(id);
+
+        int totalCapacity = zones.stream()
+                .mapToInt(Zone::getCapacity)
+                .sum();
+
+        int totalOccupied = zones.stream()
+                .mapToInt(z -> z.getCurrentCount() + z.getReservedCount())
+                .sum();
+
+        int available = Math.max(0, totalCapacity - totalOccupied);
+
+        double percent = totalCapacity > 0
+                ? Math.round((totalOccupied * 100.0 / totalCapacity) * 10.0) / 10.0
+                : 0.0;
+
+        return FloorOccupancyResponse.builder()
+                .id(id.toString())
+                .floorName(floor.getFloorName())
+                .capacity(totalCapacity)
+                .occupied(totalOccupied)
+                .availableSlots(available)
+                .percent(percent)
+                .reportDate(LocalDate.now())
+                .build();
+    }
+
+    /*
+     * =============================================================================
+     * ================================
+     * THANH TOÁN
+     * =============================================================================
+     * ================================
+     */
+    /**
+     * Lấy chi tiết một giao dịch payment theo id
+     */
+    public PaymentDetailResponse getPaymentDetail(UUID paymentId) {
+        return paymentRepository.findById(paymentId)
+                .map(p -> buildPaymentDetailResponse(p))
+                .orElse(null);
+    }
+
+    public List<PaymentDetailResponse> getPayments() {
+        return paymentRepository.findAll().stream()
+                .map(p -> buildPaymentDetailResponse(p))
+                .collect(Collectors.toList());
+    }
+
+    private PaymentDetailResponse buildPaymentDetailResponse(Payment p) {
+        PaymentDetailResponse.PaymentDetailResponseBuilder builder = PaymentDetailResponse.builder()
+                .id(p.getId())
+                .referenceType(p.getReferenceType())
+                .referenceId(p.getReferenceId())
+                .amount(p.getAmount())
+                .paymentMethod(p.getPaymentMethod())
+                .status(p.getStatus())
+                .transactionId(p.getTransactionId())
+                .paidAt(p.getPaidAt())
+                .createdAt(p.getCreatedAt());
+
+        if ("SESSION".equalsIgnoreCase(p.getReferenceType()) && p.getReferenceId() != null) {
+            parkingSessionRepository.findById(p.getReferenceId()).ifPresent(session -> {
+                builder
+                        .sessionCode(session.getSessionCode())
+                        .licensePlate(session.getLicensePlate())
+                        .vehicleTypeName(session.getVehicleType() != null ? session.getVehicleType().getName() : null)
+                        .zoneName(session.getZone() != null ? session.getZone().getZoneName() : null)
+                        .entryTime(session.getEntryTime())
+                        .exitTime(session.getExitTime());
+            });
+        }
+
+        return builder.build();
+    }
+
+    /*
+     * =============================================================================
+     * ================================
+     * SỰ CỐ AN NINH
+     * =============================================================================
+     * ================================
+     */
+    /**
+     * Tổng hợp sự cố: tổng, chưa giải quyết, phân loại theo type
+     */
+    public SecurityIncidentSummary getSecuritySummary(LocalDateTime from, LocalDateTime to) {
+        List<ExceptionLog> logs;
+        if (from != null && to != null)
+            logs = exceptionLogRepository.findByCreatedAtBetween(from, to);
+        else
+            logs = exceptionLogRepository.findAll();
+
+        long total = logs.size();
+        long unresolved = logs.stream()
+                .filter(log -> log.getResolvedAt() == null)
+                .count();
+        Map<String, Long> byType = classifySecurityIncidents(logs);
+        return SecurityIncidentSummary.builder().totalIncidents(total).unresolvedIncidents(unresolved).byType(byType)
+                .build();
+    }
+
+    public List<ExceptionLogResponse> getSecurityIncidents(LocalDateTime from, LocalDateTime to) {
+        List<ExceptionLog> logs;
+        if (from != null && to != null)
+            logs = exceptionLogRepository.findByCreatedAtBetween(from, to);
+        else
+            logs = exceptionLogRepository.findAll();
+
+        return logs.stream()
+                .map(this::mapToExceptionLogResponse)
+                .collect(Collectors.toList());
+    }
+
+    public ExceptionLogResponse getSecurityIncidentDetail(UUID id) {
+        ExceptionLog log = exceptionLogRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Sự cố không tồn tại"));
+        return mapToExceptionLogResponse(log);
+    }
+
+    private ExceptionLogResponse mapToExceptionLogResponse(ExceptionLog log) {
+        return ExceptionLogResponse.builder()
+                .id(log.getId())
+                .licensePlate(log.getLicensePlate())
+                .exceptionType(log.getExceptionType() != null ? log.getExceptionType().name() : null)
+                .description(log.getDescription())
+                .handledBy(log.getHandledBy() != null ? log.getHandledBy().getFullName() : null)
+                .status(log.getStatus() != null ? log.getStatus().name() : null)
+                .imageUrls(log.getImageUrls())
+                .resolution(log.getResolution())
+                .resolutionImageUrls(log.getResolutionImageUrls())
+                .resolvedAt(log.getResolvedAt())
+                .createdAt(log.getCreatedAt())
+                .build();
+    }
+
+    private Map<String, Long> classifySecurityIncidents(List<ExceptionLog> logs) {
+        Map<String, Long> byType = new LinkedHashMap<>();
+        for (ExceptionType type : ExceptionType.values()) {
+            byType.put(type.name(), 0L);
+        }
+
+        logs.stream()
+                .map(ExceptionLog::getExceptionType)
+                .filter(Objects::nonNull)
+                .forEach(type -> byType.put(type.name(), byType.get(type.name()) + 1));
+
+        return byType;
+    }
+
+    /*
+     * =============================================================================
+     * ================================
+     * CRUD PricingRule
+     * =============================================================================
+     * ================================
+     */
+    public PricingRule createPricingRule(Map<String, Object> body) {
+        // Kiểm tra vehicleTypeId bắt buộc
+        if (!body.containsKey("vehicleTypeId") || body.get("vehicleTypeId") == null
+                || body.get("vehicleTypeId").toString().trim().isEmpty()) {
+            throw new BusinessException("vehicleTypeId là bắt buộc");
+        }
+
+        // Lấy buildingId từ body, nếu không có thì dùng building đầu tiên
+        UUID buildingId;
+        if (body.containsKey("buildingId") && body.get("buildingId") != null) {
+            buildingId = uuid(body, "buildingId");
+        } else {
+            // Nếu frontend không gửi, lấy building đầu tiên
+            buildingId = buildingRepository.findAll().stream()
+                    .map(Building::getId)
+                    .findFirst()
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy tòa nhà nào"));
+        }
+
+        Building building = buildingRepository.findById(buildingId)
+                .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
+
+        // Lấy vehicleTypeId từ body (frontend gửi vehicleTypeId)
+        UUID vehicleTypeId = uuid(body, "vehicleTypeId");
+        VehicleType vehicleType = vehicleTypeRepository.findById(vehicleTypeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại"));
+
+        // Lấy pricingType
+        PricingRule.PricingType pricingType = PricingRule.PricingType.valueOf(
+                textOrDefault(body, "pricingType", "HOURLY").toUpperCase());
+
+        // Kiểm tra pricePerUnit
+        BigDecimal pricePerUnit = decimal(body, "pricePerUnit", BigDecimal.ZERO);
+        if (pricePerUnit.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessException("Đơn giá phải lớn hơn 0");
+        }
+
+        // Kiểm tra xem bảng giá này đã tồn tại chưa (unique constraint)
+        if (pricingRuleRepository.findByBuildingIdAndVehicleTypeIdAndPricingType(buildingId, vehicleTypeId, pricingType)
+                .isPresent()) {
+            throw new BusinessException(
+                    "Biểu phí cho " + vehicleType.getName() + " (" + pricingType.name() + ") đã tồn tại");
+        }
+
+        PricingRule rule = PricingRule.builder()
+                .building(building)
+                .vehicleType(vehicleType)
+                .pricingType(pricingType)
+                .pricePerUnit(pricePerUnit)
+                .freeMinutes(number(body, "freeMinutes", 0))
+                .build();
+
+        return pricingRuleRepository.save(rule);
+    }
+
+    public PricingRule updatePricingRule(UUID id, Map<String, Object> body) {
+        PricingRule rule = pricingRuleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Bảng giá không tồn tại"));
+
+        if (body.containsKey("pricingType"))
+            rule.setPricingType(PricingRule.PricingType.valueOf(
+                    text(body, "pricingType").toUpperCase()));
+        if (body.containsKey("pricePerUnit"))
+            rule.setPricePerUnit(decimal(body, "pricePerUnit", rule.getPricePerUnit()));
+        if (body.containsKey("freeMinutes"))
+            rule.setFreeMinutes(number(body, "freeMinutes", rule.getFreeMinutes()));
+
+        return pricingRuleRepository.save(rule);
+    }
+
+    public void deletePricingRule(UUID id) {
+        pricingRuleRepository.deleteById(id);
+    }
+
+    /*
+     * =============================================================================
+     * ================================
+     * CRUD GATE
+     * =============================================================================
+     * ================================
+     */
+    // @Transactional
+    // public Map<String, Object> createGate(Map<String, Object> body) {
+    // Building building = buildingRepository.findById(uuid(body, "buildingId"))
+    // .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
+
+    // Gate gate = Gate.builder()
+    // .building(building)
+    // .gateCode(text(body, "gateCode"))
+    // .gateName(text(body, "gateName"))
+    // .gateType(Gate.GateType.valueOf(textOrDefault(body, "gateType",
+    // "MAIN_BOTH").toUpperCase()))
+    // .isActive(true)
+    // .build();
+
+    // return gateMap(gateRepository.save(gate));
+    // }
+
+    @Transactional
+    public Map<String, Object> updateGate(UUID id, Map<String, Object> body) {
+        Gate gate = gateRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Gate không tồn tại"));
+
+        if (body.containsKey("gateName"))
+            gate.setGateName(text(body, "gateName"));
+        if (body.containsKey("gateType"))
+            gate.setGateType(Gate.GateType.valueOf(text(body, "gateType").toUpperCase()));
+        if (body.containsKey("isActive"))
+            gate.setIsActive(Boolean.parseBoolean(String.valueOf(body.get("isActive"))));
+
+        return gateMap(gateRepository.save(gate));
+    }
+
+    // @Transactional
+    // public void deleteGate(UUID id) {
+    // if (!gateRepository.existsById(id)) {
+    // throw new ResourceNotFoundException("Gate không tồn tại");
+    // }
+    // gateRepository.deleteById(id);
+    // }
+
+    /*
+     * =============================================================================
+     * ================================
+     * DASHBOARD STATS (from staff-history)
+     * =============================================================================
+     * ================================
+     */
+    public Map<String, Object> getDashboardStats() {
+        return parkingSessionService.getDashboardStats();
+    }
+
+    // ===================== HELPER METHODS =====================
+    private String textOrDefault(Map<String, Object> body, String key, String defaultVal) {
+        return body.containsKey(key) ? body.get(key).toString() : defaultVal;
+    }
+
+    private BigDecimal decimal(Map<String, Object> body, String key, BigDecimal defaultVal) {
+        return body.containsKey(key) ? new BigDecimal(body.get(key).toString()) : defaultVal;
+    }
+
+    public void deleteZone(UUID id) {
+        zoneRepository.deleteById(id);
+    }
+
+    // helper methods
+    private UUID uuid(Map<String, Object> body, String key) {
+        return UUID.fromString(body.get(key).toString());
+    }
+
+    private String text(Map<String, Object> body, String key) {
+        return body.get(key).toString();
+    }
+
+    private int number(Map<String, Object> body, String key, int defaultVal) {
+        return body.containsKey(key) ? Integer.parseInt(body.get(key).toString()) : defaultVal;
+    }
+
+    private Map<String, Object> gateMap(Gate gate) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("id", gate.getId());
+        map.put("gateCode", gate.getGateCode());
+        map.put("gateName", gate.getGateName());
+        map.put("gateType", gate.getGateType() != null ? gate.getGateType().name() : null);
+        map.put("isActive", gate.getIsActive());
+        map.put("barrierState", gate.getBarrierState());
+        if (gate.getBuilding() != null) {
+            map.put("buildingId", gate.getBuilding().getId());
+            map.put("buildingName", gate.getBuilding().getName());
+        }
+        if (gate.getZone() != null) {
+            map.put("zoneId", gate.getZone().getId());
+            map.put("zoneCode", gate.getZone().getZoneCode());
+            map.put("zoneName", gate.getZone().getZoneName());
+        }
+        return map;
+    }
+
+}

@@ -59,6 +59,7 @@ public class SecurityConfig {
             "/api/v1/auth/**",           // Đăng nhập, đăng ký, refresh token
             "/api/v1/public/**",         // Thông tin bãi xe công khai (nếu cần)
             "/api/v1/emergency/status",  // Trạng thái SOS cho mọi dashboard
+            "/api/v1/driver/payments/vnpay-return", // VNPay browser redirect callback
             "/api/v1/driver/payments/vnpay-ipn", // VNPay server-to-server callback
             "/ws/**",                    // WebSocket STOMP endpoint
             "/actuator/health",          // Health check cho DevOps
@@ -78,6 +79,9 @@ public class SecurityConfig {
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
 
+                // ── Explicit public matchers (Swagger UI & Manager) ──
+                .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**", "/api/v1/manager/**").permitAll()
+
                 // ── Public: không cần JWT ──
                 .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
 
@@ -89,17 +93,22 @@ public class SecurityConfig {
                 // Active session, history, bookings, payments
                 .requestMatchers("/api/v1/driver/**").hasAnyRole("DRIVER", "STAFF", "MANAGER", "ADMIN")
 
+                // ── Security tra cứu xe ──
+                .requestMatchers("/api/v1/staff/sessions/active", "/api/v1/staff/sessions/history").hasAnyRole("STAFF", "MANAGER", "ADMIN", "SECURITY")
+
                 // ── Staff: Nhân viên soát vé + Quản lý + Admin ──
                 // Check-in, check-out, quản lý session
                 .requestMatchers("/api/v1/staff/**").hasAnyRole("STAFF", "MANAGER", "ADMIN")
 
                 // ── Security: Bảo vệ + Quản lý + Admin ──
                 // Log ngoại lệ an ninh, giám sát cổng
+                .requestMatchers("/api/v1/security/exceptions", "/api/v1/security/exceptions/**").hasAnyRole("SECURITY", "STAFF", "MANAGER", "ADMIN")
                 .requestMatchers("/api/v1/security/**").hasAnyRole("SECURITY", "MANAGER", "ADMIN")
 
                 // ── Manager: Quản lý vận hành + Admin ──
                 // Báo cáo, cấu hình zone/giá, dashboard tổng quan
-                .requestMatchers("/api/v1/manager/**").hasAnyRole("MANAGER", "ADMIN")
+                .requestMatchers("/api/v1/manager/**").permitAll()
+                    //.hasAnyRole("MANAGER", "ADMIN")
 
                 // ── Admin namespace: ADMIN + MANAGER được qua URL layer.
                 // Method-level @PreAuthorize sẽ giữ user/settings chỉ ADMIN,
@@ -121,12 +130,7 @@ public class SecurityConfig {
     @Bean
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
         org.springframework.web.cors.CorsConfiguration config = new org.springframework.web.cors.CorsConfiguration();
-        config.setAllowedOrigins(java.util.List.of(
-                "http://localhost:5173",
-                "http://localhost:5174",
-                "https://localhost:5173",
-                "https://localhost:5174"
-        ));
+        config.setAllowedOriginPatterns(java.util.List.of("*"));
         config.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(java.util.List.of("*"));
         config.setAllowCredentials(true);

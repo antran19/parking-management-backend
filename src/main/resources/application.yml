@@ -4,7 +4,7 @@ spring:
 
   # ===== DATABASE =====
   datasource:
-    url: jdbc:postgresql://localhost:5432/smartparking_db
+    url: jdbc:postgresql://localhost:5433/smartparking_db
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
@@ -61,7 +61,7 @@ vnpay:
   hash-secret: ${VNPAY_HASH_SECRET:5DJ4Q95ESAEMBAM3H68QBKQ616DHTSZ4}
   payment-url: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
   return-url: ${VNPAY_RETURN_URL:http://localhost:5173/driver/payment-return}
-  ipn-url: ${VNPAY_IPN_URL:https://dibasic-unfawning-tressa.ngrok-free.dev/api/v1/driver/payments/vnpay-ipn}
+  ipn-url: ${VNPAY_IPN_URL:}
 
 # ===== ACTUATOR =====
 management:
@@ -73,9 +73,17 @@ management:
     health:
       show-details: always
 
+# ===== SWAGGER =====
+springdoc:
+  swagger-ui:
+    operations-sorter: alpha       # Sắp xếp API theo tên (A-Z)
+    tags-sorter: alpha             # Sắp xếp nhóm tag theo tên
+    doc-expansion: list            # Mặc định thu gọn, chỉ hiện danh sách
+
 # ===== LOGGING =====
 logging:
   level:
     com.smartparking: DEBUG
     org.springframework.security: INFO
     org.springframework.web.socket: INFO
+

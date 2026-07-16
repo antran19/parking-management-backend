@@ -129,24 +129,110 @@ public class DriverController {
      * Method: GET
      * Endpoint: /api/v1/driver/plates
      */
-    @Operation(summary = "Lấy danh sách biển số", description = "Trả về tất cả biển số của driver đang đăng nhập")
+    @Operation(summary = "Lấy danh sách phương tiện của Driver", description = "Trả về biển số trong hồ sơ và mã xe đạp từ gói đang hoạt động")
     @GetMapping("/driver/plates")
-    public ApiResponse<List<Map<String, Object>>> getMyPlates(Authentication authentication) {
+    @Transactional(readOnly = true)
+    public ApiResponse<List<Map<String, Object>>> getMyPlates(
+            Authentication authentication) {
+
         User currentUser = getCurrentUser(authentication);
 
-        List<Map<String, Object>> plates = userLicensePlateRepository.findByUser(currentUser)
+        /*
+         * Dùng LinkedHashMap để:
+         * - Giữ nguyên thứ tự hiển thị.
+         * - Không trả về trùng cùng một mã phương tiện.
+         */
+        Map<String, Map<String, Object>> vehicleRegistry = new LinkedHashMap<>();
+
+        /*
+         * 1. Biển số thật được Driver đăng ký trong user_license_plates.
+         */
+        userLicensePlateRepository.findByUser(currentUser)
                 .stream()
                 .collect(java.util.stream.Collectors.toMap(
                         item -> LicensePlateUtil.normalize(item.getLicensePlate()),
                         item -> item,
-                        (oldValue, newValue) -> oldValue.getVehicleType() != null ? oldValue : newValue,
-                        java.util.LinkedHashMap::new))
+                        (oldValue, newValue) -> oldValue.getVehicleType() != null
+                                ? oldValue
+                                : newValue,
+                        LinkedHashMap::new))
                 .values()
-                .stream()
-                .map(this::toDriverPlateResponse)
-                .toList();
+                .forEach(userPlate -> {
+                    String normalizedPlate = LicensePlateUtil.normalize(userPlate.getLicensePlate());
 
-        return ApiResponse.success("Lấy danh sách biển số thành công", plates);
+                    vehicleRegistry.put(
+                            normalizedPlate,
+                            toDriverPlateResponse(userPlate));
+                });
+
+        /*
+         * 2. Mã xe đạp được sinh khi Driver đăng ký và thanh toán gói.
+         *
+         * Chỉ trả về mã khi:
+         * - Là gói xe đạp.
+         * - Gói đang ACTIVE.
+         * - Gói đang nằm trong thời hạn sử dụng.
+         *
+         * Không tạo UserLicensePlate cho xe đạp để tránh ảnh hưởng Staff check-in
+         * và chức năng xóa biển số.
+         */
+        LocalDate today = LocalDate.now();
+
+        parkingPassRepository.findByUser(currentUser)
+                .stream()
+                .filter(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE)
+                .filter(pass -> isBicycleVehicleType(pass.getVehicleType()))
+                .filter(pass -> pass.getLicensePlate() != null
+                        && !pass.getLicensePlate().isBlank())
+                .filter(pass -> pass.getStartDate() != null
+                        && pass.getEndDate() != null)
+                .filter(pass -> !today.isBefore(pass.getStartDate())
+                        && !today.isAfter(pass.getEndDate()))
+                .forEach(pass -> {
+                    String bicycleIdentifier = LicensePlateUtil.normalize(pass.getLicensePlate());
+
+                    Map<String, Object> item = new LinkedHashMap<>();
+
+                    item.put("id", pass.getId());
+                    item.put("licensePlate", bicycleIdentifier);
+
+                    item.put(
+                            "vehicleTypeId",
+                            pass.getVehicleType() != null
+                                    ? pass.getVehicleType().getId()
+                                    : null);
+
+                    item.put(
+                            "vehicleTypeName",
+                            pass.getVehicleType() != null
+                                    ? pass.getVehicleType().getName()
+                                    : "Xe đạp");
+
+                    item.put("createdAt", pass.getCreatedAt());
+
+                    /*
+                     * Frontend dùng 2 trường này để biết:
+                     * - Đây là mã lấy từ gói.
+                     * - Không được hiện nút Xóa như biển số thông thường.
+                     */
+                    item.put("source", "BICYCLE_PASS");
+                    item.put("readOnly", true);
+
+                    item.put("parkingPassId", pass.getId());
+                    item.put("parkingPassCode", pass.getParkingPassCode());
+                    item.put("passType", pass.getPassType());
+                    item.put("passStatus", pass.getStatus());
+                    item.put("startDate", pass.getStartDate());
+                    item.put("endDate", pass.getEndDate());
+
+                    vehicleRegistry.putIfAbsent(bicycleIdentifier, item);
+                });
+
+        List<Map<String, Object>> vehicles = new java.util.ArrayList<>(vehicleRegistry.values());
+
+        return ApiResponse.success(
+                "Lấy danh sách phương tiện thành công",
+                vehicles);
     }
 
     /**
@@ -397,7 +483,7 @@ public class DriverController {
                 ? uniqueCodeGeneratorService.generateBicycleIdentifier()
                 : normalizeAndValidatePlate(request.getLicensePlate());
 
-        // Xe máy/ô tô đang gửi trong bãi 
+        // Xe máy/ô tô đang gửi trong bãi
         // Xe đạp → vẫn tự sinh mã riêng nên không cần check active session theo biển số
         // cũ.
         if (!bicyclePass) {
@@ -586,6 +672,8 @@ public class DriverController {
         item.put("vehicleTypeId", vehicleType != null ? vehicleType.getId() : null);
         item.put("vehicleTypeName", vehicleType != null ? vehicleType.getName() : "Chưa gán loại xe");
         item.put("createdAt", userLicensePlate.getCreatedAt());
+        item.put("source", "PROFILE");
+        item.put("readOnly", false);
 
         return item;
     }

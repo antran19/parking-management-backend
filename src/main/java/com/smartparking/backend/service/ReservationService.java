@@ -16,11 +16,14 @@ import com.smartparking.backend.repository.ZoneRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.smartparking.backend.util.LicensePlateUtil;
+import com.smartparking.backend.entity.ParkingPass;
 import com.smartparking.backend.entity.ParkingSession;
+import com.smartparking.backend.repository.ParkingPassRepository;
 import com.smartparking.backend.repository.ParkingSessionRepository;
 
 import java.util.concurrent.ThreadLocalRandom;
 import java.sql.Driver;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -52,6 +55,7 @@ public class ReservationService {
     private final EmergencyService emergencyService;
     private final ParkingSessionRepository parkingSessionRepository;
     private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
+    private final ParkingPassRepository parkingPassRepository;
 
     public ReservationService(
             ReservationRepository reservationRepository,
@@ -61,7 +65,8 @@ public class ReservationService {
             UserLicensePlateRepository userLicensePlateRepository,
             BlacklistService blacklistService,
             EmergencyService emergencyService,
-            UniqueCodeGeneratorService uniqueCodeGeneratorService) {
+            UniqueCodeGeneratorService uniqueCodeGeneratorService,
+            ParkingPassRepository parkingPassRepository) {
         this.reservationRepository = reservationRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
@@ -70,6 +75,7 @@ public class ReservationService {
         this.blacklistService = blacklistService;
         this.emergencyService = emergencyService;
         this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
+        this.parkingPassRepository = parkingPassRepository;
     }
 
     /**
@@ -103,9 +109,35 @@ public class ReservationService {
         // - Không check trong hồ sơ user_license_plates.
         // - Tự sinh mã dạng BCyymmdd-nnnn, ví dụ BC260702-0001.
         boolean bicycleReservation = isBicycleVehicleType(vehicleType);
-        String licensePlate = bicycleReservation
-                ? uniqueCodeGeneratorService.generateBicycleIdentifier()
-                : normalizePlate(request.getLicensePlate());
+
+        String requestedIdentifier = LicensePlateUtil.normalize(request.getLicensePlate());
+
+        String licensePlate;
+
+        if (bicycleReservation && !requestedIdentifier.isBlank()) {
+            /*
+             * Driver đã chọn mã xe đạp từ gói hội viên.
+             * Phải xác minh mã thuộc đúng Driver và gói vẫn còn hiệu lực.
+             */
+            validateActiveBicyclePass(
+                    user,
+                    requestedIdentifier,
+                    vehicleType,
+                    zone);
+
+            licensePlate = requestedIdentifier;
+        } else if (bicycleReservation) {
+            /*
+             * Giữ tương thích với luồng cũ:
+             * Driver chưa có gói xe đạp vẫn có thể đặt chỗ và backend tự sinh mã.
+             */
+            licensePlate = uniqueCodeGeneratorService.generateBicycleIdentifier();
+        } else {
+            /*
+             * Ô tô, xe máy và xe tải vẫn xử lý như trước.
+             */
+            licensePlate = normalizePlate(request.getLicensePlate());
+        }
 
         /*
          * Quảng - Driver scope:
@@ -123,9 +155,7 @@ public class ReservationService {
         validateZoneHasAvailableSlot(zone);
         validatePlateHasNoActiveReservation(user, licensePlate);
 
-        if (!bicycleReservation) {
-            validatePlateHasNoActiveSession(licensePlate);
-        }
+        validatePlateHasNoActiveSession(licensePlate);
 
         LocalDateTime reservedFrom = request.getReservedFrom() != null
                 ? request.getReservedFrom()
@@ -351,6 +381,74 @@ public class ReservationService {
     }
 
     /**
+     * Xác minh mã xe đạp được Driver chọn khi đặt chỗ.
+     *
+     * Không thêm mã vào user_license_plates.
+     * Mã vẫn thuộc ParkingPass nên Staff check-in tiếp tục kiểm tra như cũ.
+     */
+    private void validateActiveBicyclePass(
+            User user,
+            String bicycleIdentifier,
+            VehicleType requestedVehicleType,
+            Zone zone) {
+
+        ParkingPass parkingPass = parkingPassRepository
+                .findByUserAndStatus(
+                        user,
+                        ParkingPass.PassStatus.ACTIVE)
+                .stream()
+                .filter(pass -> LicensePlateUtil.normalize(
+                        pass.getLicensePlate())
+                        .equals(bicycleIdentifier))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(
+                        "Mã xe đạp không thuộc gói đang hoạt động của tài khoản này"));
+
+        if (parkingPass.getVehicleType() == null
+                || !isBicycleVehicleType(parkingPass.getVehicleType())) {
+
+            throw new BusinessException(
+                    "Mã đã chọn không thuộc gói xe đạp");
+        }
+
+        if (requestedVehicleType == null
+                || !parkingPass.getVehicleType().getId()
+                        .equals(requestedVehicleType.getId())) {
+
+            throw new BusinessException(
+                    "Mã xe đạp không phù hợp với loại xe của zone");
+        }
+
+        LocalDate today = LocalDate.now();
+
+        if (parkingPass.getStartDate() == null
+                || parkingPass.getEndDate() == null
+                || today.isBefore(parkingPass.getStartDate())
+                || today.isAfter(parkingPass.getEndDate())) {
+
+            throw new BusinessException(
+                    "Gói xe đạp của mã này đã hết hạn hoặc chưa có hiệu lực");
+        }
+
+        UUID passBuildingId = parkingPass.getBuilding() != null
+                ? parkingPass.getBuilding().getId()
+                : null;
+
+        UUID zoneBuildingId = zone.getFloor() != null
+                && zone.getFloor().getBuilding() != null
+                        ? zone.getFloor().getBuilding().getId()
+                        : null;
+
+        if (passBuildingId == null
+                || zoneBuildingId == null
+                || !passBuildingId.equals(zoneBuildingId)) {
+
+            throw new BusinessException(
+                    "Mã xe đạp không thuộc bãi đỗ của zone đã chọn");
+        }
+    }
+
+    /**
      * Xe đạp không dùng biển số thật.
      * Hệ thống tự sinh mã định danh dạng BCyymmdd-nnnn.
      * Ví dụ: BC260702-0001.
@@ -384,6 +482,7 @@ public class ReservationService {
     private String generateAvailableBicycleIdentifier() {
         return uniqueCodeGeneratorService.generateBicycleIdentifier();
     }
+
     // Xe đạp: tự sinh mã dạng BCyymmddnnnn, ví dụ BC2607020001.
     private boolean isBicycleIdentifierAvailable(String identifier) {
         boolean hasActiveReservation = !reservationRepository.findByLicensePlateAndStatusIn(

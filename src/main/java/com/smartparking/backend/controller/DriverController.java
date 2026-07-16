@@ -397,13 +397,14 @@ public class DriverController {
                 ? uniqueCodeGeneratorService.generateBicycleIdentifier()
                 : normalizeAndValidatePlate(request.getLicensePlate());
 
-        // Xe máy/ô tô đang gửi trong bãi → không cho mua gói mới.
+        // Xe máy/ô tô đang gửi trong bãi 
         // Xe đạp → vẫn tự sinh mã riêng nên không cần check active session theo biển số
         // cũ.
         if (!bicyclePass) {
             UserLicensePlate userPlate = ensurePlateBelongsToUser(currentUser, licensePlate);
+
             ensurePlateVehicleTypeMatches(userPlate, vehicleType);
-            ensurePlateHasNoActiveSession(licensePlate);
+
             ensurePlateNotBlacklistedForDriverAction(licensePlate);
         }
 
@@ -476,10 +477,6 @@ public class DriverController {
             throw new BusinessException("Chỉ có thể thanh toán vé đang chờ thanh toán");
         }
 
-        if (parkingPass.getStatus() != ParkingPass.PassStatus.PENDING_PAYMENT) {
-            throw new BusinessException("Chỉ có thể thanh toán vé đang chờ thanh toán");
-        }
-
         if (!isBicycleVehicleType(parkingPass.getVehicleType())) {
             ensurePlateNotBlacklistedForDriverAction(parkingPass.getLicensePlate());
         }
@@ -542,7 +539,9 @@ public class DriverController {
 
         Payment payment = paymentRepository.findByReferenceTypeAndReferenceId("PASS", pass.getId())
                 .stream()
-                .filter(item -> item.getPaymentMethod() == Payment.PaymentMethod.ONLINE || item.getPaymentMethod() == Payment.PaymentMethod.VNPAY || item.getPaymentMethod() == Payment.PaymentMethod.NCB)
+                .filter(item -> item.getPaymentMethod() == Payment.PaymentMethod.ONLINE
+                        || item.getPaymentMethod() == Payment.PaymentMethod.VNPAY
+                        || item.getPaymentMethod() == Payment.PaymentMethod.NCB)
                 .filter(item -> item.getStatus() != Payment.PaymentStatus.COMPLETED)
                 .findFirst()
                 .orElseGet(() -> Payment.builder()

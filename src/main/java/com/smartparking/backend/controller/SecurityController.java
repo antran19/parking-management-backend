@@ -167,6 +167,7 @@ public class SecurityController {
     public ResponseEntity<ApiResponse<EmergencyStatusResponse>> activateEmergency(
             @Valid @RequestBody EmergencyActivateRequest request) {
         EmergencyStatusResponse response = emergencyService.activateEmergency(request);
+        emergencyService.broadcastEmergencyStatus(response, "ACTIVATED");
         return ResponseEntity.ok(ApiResponse.success("SOS đã kích hoạt. Toàn bộ barrier đã mở.", response));
     }
 
@@ -181,6 +182,7 @@ public class SecurityController {
     public ResponseEntity<ApiResponse<EmergencyStatusResponse>> deactivateEmergency(
             @Valid @RequestBody EmergencyDeactivateRequest request) {
         EmergencyStatusResponse response = emergencyService.deactivateEmergency(request);
+        emergencyService.broadcastEmergencyStatus(response, "DEACTIVATED");
         return ResponseEntity.ok(ApiResponse.success("SOS đã được hủy. Hệ thống trở lại bình thường.", response));
     }
 

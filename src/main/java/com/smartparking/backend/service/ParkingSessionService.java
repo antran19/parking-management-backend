@@ -152,8 +152,12 @@ public class ParkingSessionService {
                             + ") không trùng khớp với biển số trên vé đặt chỗ (" + resPlate + ")");
                 }
             } else {
-                // Tự động điền biển số từ đặt chỗ (cho xe không biển như xe đạp)
-                request.setLicensePlate(reservation.getLicensePlate());
+                // Chỉ tự động điền biển số từ đặt chỗ cho xe đạp/xe không biển hoặc ở chế độ xem trước (preview)
+                if (isBicycleVehicleType(reservation.getVehicleType()) || Boolean.TRUE.equals(request.getIsPreview())) {
+                    request.setLicensePlate(reservation.getLicensePlate());
+                } else {
+                    throw new BusinessException("Biển số xe thực tế không được để trống");
+                }
             }
 
             // Đối soát loại phương tiện thực tế chọn trên màn hình với vé đặt chỗ
@@ -210,8 +214,12 @@ public class ParkingSessionService {
                             + ") không trùng khớp với biển số xe đăng ký của vé tháng (" + passPlate + ")");
                 }
             } else {
-                // Tự động điền biển số xe từ vé tháng (như xe đạp)
-                request.setLicensePlate(pass.getLicensePlate());
+                // Chỉ tự động điền biển số từ vé tháng cho xe đạp/xe không biển hoặc ở chế độ xem trước (preview)
+                if (isBicycleVehicleType(pass.getVehicleType()) || Boolean.TRUE.equals(request.getIsPreview())) {
+                    request.setLicensePlate(pass.getLicensePlate());
+                } else {
+                    throw new BusinessException("Biển số xe thực tế không được để trống");
+                }
             }
 
             // Đối soát loại phương tiện thực tế chọn trên màn hình với vé tháng
@@ -430,6 +438,13 @@ public class ParkingSessionService {
                 ParkingPass pass = activePasses.get(0);
                 pType = pass.getPassType() != null ? pass.getPassType().name() : null;
                 custName = pass.getUser() != null ? pass.getUser().getFullName() : "Thuê bao tháng";
+            } else if (reservation != null) {
+                custName = reservation.getUser() != null ? reservation.getUser().getFullName() : "Khách đặt trước";
+            } else {
+                List<UserLicensePlate> plateUsers = userLicensePlateRepository.findByLicensePlate(licensePlate);
+                if (!plateUsers.isEmpty() && plateUsers.get(0).getUser() != null) {
+                    custName = plateUsers.get(0).getUser().getFullName();
+                }
             }
             return SessionResponse.builder()
                     .licensePlate(licensePlate)
@@ -1212,17 +1227,19 @@ public class ParkingSessionService {
             }
         }
 
-        if (customerName == null) {
-            String normalizedSessionPlate = LicensePlateUtil.normalize(session.getLicensePlate());
+        String rCode = null;
+        String normalizedSessionPlate = LicensePlateUtil.normalize(session.getLicensePlate());
 
-            List<Reservation> reservations = reservationRepository.findByLicensePlateAndStatusIn(
-                    normalizedSessionPlate,
-                    List.of(
-                            Reservation.ReservationStatus.COMPLETED,
-                            Reservation.ReservationStatus.CONFIRMED,
-                            Reservation.ReservationStatus.PENDING));
+        List<Reservation> reservations = reservationRepository.findByLicensePlateAndStatusIn(
+                normalizedSessionPlate,
+                List.of(
+                        Reservation.ReservationStatus.COMPLETED,
+                        Reservation.ReservationStatus.CONFIRMED,
+                        Reservation.ReservationStatus.PENDING));
 
-            if (!reservations.isEmpty() && reservations.get(0).getUser() != null) {
+        if (!reservations.isEmpty()) {
+            rCode = reservations.get(0).getReservationCode();
+            if (customerName == null && reservations.get(0).getUser() != null) {
                 customerName = reservations.get(0).getUser().getFullName();
             }
         }
@@ -1237,7 +1254,8 @@ public class ParkingSessionService {
         }
 
         builder.customerName(customerName)
-                .passType(passType);
+                .passType(passType)
+                .reservationCode(rCode);
 
         return builder.build();
     }

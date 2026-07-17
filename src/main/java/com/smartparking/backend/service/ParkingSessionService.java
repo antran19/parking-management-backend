@@ -917,9 +917,14 @@ public class ParkingSessionService {
 
         // Tính phí tạm tính dựa vào khoảng thời gian từ lúc vào tới thời điểm hiện tại
         int currentMinutes = (int) ChronoUnit.MINUTES.between(session.getEntryTime(), LocalDateTime.now());
-        UUID buildingId = session.getZone().getFloor().getBuilding().getId();
-        BigDecimal estimatedFee = pricingService.estimateFee(
-                buildingId, session.getVehicleType().getId(), currentMinutes);
+        BigDecimal estimatedFee;
+        if (session.getDriverType() == ParkingSession.DriverType.SUBSCRIBER) {
+            estimatedFee = BigDecimal.ZERO;
+        } else {
+            UUID buildingId = session.getZone().getFloor().getBuilding().getId();
+            estimatedFee = pricingService.estimateFee(
+                    buildingId, session.getVehicleType().getId(), currentMinutes);
+        }
 
         SessionResponse response = buildSessionResponse(session, session.getZone(), null);
         response.setDurationMinutes(currentMinutes);
@@ -1237,6 +1242,17 @@ public class ParkingSessionService {
                         Reservation.ReservationStatus.CONFIRMED,
                         Reservation.ReservationStatus.PENDING));
 
+        LocalDateTime entryTime = session.getEntryTime();
+        if (entryTime != null && !reservations.isEmpty()) {
+            reservations = reservations.stream()
+                    .filter(res -> {
+                        LocalDateTime allowedFrom = res.getReservedFrom().minusMinutes(60);
+                        LocalDateTime allowedTo = res.getReservedTo();
+                        return !entryTime.isBefore(allowedFrom) && !entryTime.isAfter(allowedTo);
+                    })
+                    .collect(Collectors.toList());
+        }
+
         if (!reservations.isEmpty()) {
             rCode = reservations.get(0).getReservationCode();
             if (customerName == null && reservations.get(0).getUser() != null) {
@@ -1327,10 +1343,15 @@ public class ParkingSessionService {
                         response.setDurationMinutes(currentMinutes);
                         if (zone != null && zone.getFloor() != null && zone.getFloor().getBuilding() != null) {
                             try {
-                                BigDecimal estimatedFee = pricingService.estimateFee(
-                                        zone.getFloor().getBuilding().getId(),
-                                        session.getVehicleType().getId(),
-                                        currentMinutes);
+                                BigDecimal estimatedFee;
+                                if (session.getDriverType() == ParkingSession.DriverType.SUBSCRIBER) {
+                                    estimatedFee = BigDecimal.ZERO;
+                                } else {
+                                    estimatedFee = pricingService.estimateFee(
+                                            zone.getFloor().getBuilding().getId(),
+                                            session.getVehicleType().getId(),
+                                            currentMinutes);
+                                }
                                 response.setTotalFee(estimatedFee);
                             } catch (Exception e) {
                                 log.warn("Failed to estimate fee for session {}: {}", session.getSessionCode(),
@@ -1359,10 +1380,15 @@ public class ParkingSessionService {
                 response.setDurationMinutes(currentMinutes);
                 if (zone != null && zone.getFloor() != null && zone.getFloor().getBuilding() != null) {
                     try {
-                        BigDecimal estimatedFee = pricingService.estimateFee(
-                                zone.getFloor().getBuilding().getId(),
-                                session.getVehicleType().getId(),
-                                currentMinutes);
+                        BigDecimal estimatedFee;
+                        if (session.getDriverType() == ParkingSession.DriverType.SUBSCRIBER) {
+                            estimatedFee = BigDecimal.ZERO;
+                        } else {
+                            estimatedFee = pricingService.estimateFee(
+                                    zone.getFloor().getBuilding().getId(),
+                                    session.getVehicleType().getId(),
+                                    currentMinutes);
+                        }
                         response.setTotalFee(estimatedFee);
                     } catch (Exception e) {
                         log.warn("Failed to estimate fee for session {}: {}", session.getSessionCode(), e.getMessage());

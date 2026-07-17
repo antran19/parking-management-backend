@@ -872,45 +872,9 @@ public class DriverController {
             throw new BusinessException("Xe đạp không cần đăng ký biển số");
         }
 
-        if (vehicleTypeName.contains("XE MAY")) {
-            validateMotorbikePlate(licensePlate);
-            return;
-        }
-
-        if (vehicleTypeName.contains("O TO") || vehicleTypeName.equals("O")) {
-            validateCarPlate(licensePlate);
-            return;
-        }
-
-        if (vehicleTypeName.contains("XE TAI") || vehicleTypeName.equals("XE")) {
-            validateTruckPlate(licensePlate);
-            return;
-        }
-
-        throw new BusinessException("Loại xe chưa được hỗ trợ validation: " + vehicleType.getName());
-    }
-
-    private void validateMotorbikePlate(String licensePlate) {
-        boolean oldMotorbike = licensePlate.matches("^[0-9]{2}[A-Z][0-9][0-9]{4,5}$");
-        boolean newMotorbike = licensePlate.matches("^[0-9]{2}[A-Z]{2}[0-9]{4,5}$");
-
-        if (!oldMotorbike && !newMotorbike) {
-            throw new BusinessException(
-                    "Biển số xe máy không đúng định dạng. Ví dụ: 51H1-2345, 59X1-123.45 hoặc 59AA-729.32");
-        }
-    }
-
-    private void validateCarPlate(String licensePlate) {
-        if (!licensePlate.matches("^[0-9]{2}[A-Z]{1,2}[0-9]{4,5}$")) {
-            throw new BusinessException(
-                    "Biển số ô tô không đúng định dạng. Ví dụ: 30A-1234, 30A-123.45 hoặc 50AB-123.45");
-        }
-    }
-
-    private void validateTruckPlate(String licensePlate) {
-        if (!licensePlate.matches("^[0-9]{2}[A-Z]{1,2}[0-9]{4,5}$")) {
-            throw new BusinessException(
-                    "Biển số xe tải không đúng định dạng. Ví dụ: 51C-123.45, 51D-123.45 hoặc 60C-456.78");
+        String validationError = LicensePlateUtil.getLicensePlateValidationError(licensePlate, vehicleType.getName());
+        if (validationError != null) {
+            throw new BusinessException(validationError);
         }
     }
 

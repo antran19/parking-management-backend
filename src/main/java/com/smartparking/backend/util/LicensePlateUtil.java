@@ -45,7 +45,7 @@ public final class LicensePlateUtil {
         String provinceCode = "(?:1[124-9]|[23][0-9]|4[0137-9]|[5-7][0-9]|8[0-689]|9[02-57-9])";
         String tailPattern = "\\d{4,5}";
 
-        String carSeries = "(?:[A-Z]{1,2}|" + carSpecial + ")";
+        String carSeries = "(?:[A-Z]{1}|" + carSpecial + ")";
         String motoSeries = "(?:(?!(" + carSpecial + "))[A-Z]{2}|[A-Z][0-9]|MD[0-9]?)";
 
         boolean isCar = plate.matches("^(" + provinceCode + carSeries + tailPattern + ")$|^([A-Z]{2}" + tailPattern + ")$");

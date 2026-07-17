@@ -429,20 +429,31 @@ public class AdminManagementController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Get all completed payments")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getPayments() {
-        List<Map<String, Object>> result = paymentRepository.findAll().stream()
-                .filter(p -> p.getStatus() == Payment.PaymentStatus.COMPLETED)
-                .map(p -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", p.getId());
-                    m.put("referenceType", p.getReferenceType());
-                    m.put("referenceId", p.getReferenceId());
-                    m.put("amount", p.getAmount());
-                    m.put("paymentMethod", p.getPaymentMethod().name());
-                    m.put("transactionId", p.getTransactionId());
-                    m.put("paidAt", p.getPaidAt());
-                    m.put("createdAt", p.getCreatedAt());
-                    return m;
-                }).toList();
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        List<Payment> payments;
+        try {
+            payments = paymentRepository.findAll();
+        } catch (Exception e) {
+            System.err.println("[ERROR] Cannot load payments from DB: " + e.getMessage());
+            return ResponseEntity.ok(ApiResponse.success(result));
+        }
+        for (Payment p : payments) {
+            try {
+                if (p.getStatus() != Payment.PaymentStatus.COMPLETED) continue;
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", p.getId());
+                m.put("referenceType", p.getReferenceType());
+                m.put("referenceId", p.getReferenceId());
+                m.put("amount", p.getAmount());
+                m.put("paymentMethod", p.getPaymentMethod() != null ? p.getPaymentMethod().name() : null);
+                m.put("transactionId", p.getTransactionId());
+                m.put("paidAt", p.getPaidAt());
+                m.put("createdAt", p.getCreatedAt());
+                result.add(m);
+            } catch (Exception ex) {
+                System.err.println("[WARN] Skipping payment due to mapping error: " + ex.getMessage());
+            }
+        }
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 

@@ -146,7 +146,8 @@ public class SecurityController {
             resolutionImageUrls = (List<String>) body.get("resolutionImageUrls");
         }
 
-        ExceptionLogResponse exceptionLog = securityExceptionService.resolveException(id, handledByUserId, resolution, resolutionImageUrls);
+        ExceptionLogResponse exceptionLog = securityExceptionService.resolveException(id, handledByUserId, resolution,
+                resolutionImageUrls);
         return ResponseEntity.ok(ApiResponse.success("Đã đánh dấu sự cố là đã giải quyết", exceptionLog));
     }
 

@@ -117,7 +117,8 @@ public class SecurityExceptionService {
      * Đánh dấu sự cố đã được giải quyết
      */
     @Transactional
-    public ExceptionLogResponse resolveException(UUID id, UUID handledByUserId, String resolution, List<String> resolutionImageUrls) {
+    public ExceptionLogResponse resolveException(UUID id, UUID handledByUserId, String resolution,
+            List<String> resolutionImageUrls) {
         ExceptionLog exceptionLog = exceptionLogRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("Sự cố không tồn tại"));
 
@@ -134,7 +135,6 @@ public class SecurityExceptionService {
             String existingDesc = exceptionLog.getDescription() == null ? "" : exceptionLog.getDescription() + "\n\n";
             exceptionLog.setDescription(existingDesc + "=== GHI CHÚ GIẢI QUYẾT ===\n" + resolution);
         }
-
 
         ExceptionLog saved = exceptionLogRepository.save(exceptionLog);
         return mapToResponse(saved);

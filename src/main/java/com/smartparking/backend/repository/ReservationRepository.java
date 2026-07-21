@@ -27,6 +27,7 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
     boolean existsByUserAndLicensePlateAndStatusIn(User user, String licensePlate, List<ReservationStatus> statuses);
 
     List<Reservation> findByLicensePlateAndStatusIn(String licensePlate, List<ReservationStatus> statuses);
+    List<Reservation> findByLicensePlateInAndStatusIn(List<String> licensePlates, List<ReservationStatus> statuses);
 
     List<Reservation> findByZoneId(UUID zoneId);
 }

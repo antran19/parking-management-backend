@@ -283,10 +283,8 @@ public class ParkingSessionService {
 
         // Bước 3: Validate — biển số không được có session đang hoạt động của cùng loại
         // phương tiện
-        List<ParkingSession> activeSessionsForPlate = sessionRepository.findAll().stream()
-                .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
-                .filter(s -> LicensePlateUtil.normalize(s.getLicensePlate()).equals(licensePlate))
-                .toList();
+        List<ParkingSession> activeSessionsForPlate = sessionRepository.findActiveSessionsByPlate(
+                SessionStatus.ACTIVE, request.getLicensePlate(), licensePlate);
 
         for (ParkingSession s : activeSessionsForPlate) {
             if (s.getVehicleType().getId().equals(vehicleType.getId())) {
@@ -537,7 +535,7 @@ public class ParkingSessionService {
                 assignedZone.getZoneCode(), assignedZone.getFloor().getFloorName());
 
         triggerGateOpenAndClose(mainGate.getId());
-        return buildSessionResponse(session, assignedZone, null);
+        return buildSessionResponseDirect(session, assignedZone, null, matchedPass, reservation);
     }
 
     /**
@@ -717,12 +715,7 @@ public class ParkingSessionService {
             return opt.get();
 
         // 2. Tìm bằng biển số
-        return sessionRepository.findAll().stream()
-                .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
-                .filter(s -> {
-                    String normPlate = s.getLicensePlate().replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-                    return normPlate.equals(cleanCode);
-                })
+        return sessionRepository.findActiveSessionsByPlate(SessionStatus.ACTIVE, code.trim(), cleanCode).stream()
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Không tìm thấy phiên gửi xe đang hoạt động với mã hoặc biển số: " + code));
@@ -885,10 +878,8 @@ public class ParkingSessionService {
                 throw new BusinessException("Vui lòng nhập biển số xe hoặc quét mã vé để tìm kiếm.");
             }
 
-            List<ParkingSession> activeSessions = sessionRepository.findAll().stream()
-                    .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
-                    .filter(s -> LicensePlateUtil.normalize(s.getLicensePlate()).equals(normalizedPlate))
-                    .toList();
+            List<ParkingSession> activeSessions = sessionRepository.findActiveSessionsByPlate(
+                    SessionStatus.ACTIVE, licensePlate, normalizedPlate);
 
             if (activeSessions.isEmpty()) {
                 throw new ResourceNotFoundException(
@@ -1098,9 +1089,8 @@ public class ParkingSessionService {
     }
 
     private Gate findDefaultExitGate() {
-        return gateRepository.findAll().stream()
-                .filter(Gate::getIsActive)
-                .filter(g -> g.getGateType() == Gate.GateType.MAIN_EXIT || g.getGateType() == Gate.GateType.MAIN_BOTH)
+        return gateRepository.findByIsActiveTrueAndGateTypeIn(
+                List.of(Gate.GateType.MAIN_EXIT, Gate.GateType.MAIN_BOTH)).stream()
                 .findFirst()
                 .orElse(null);
     }
@@ -1123,12 +1113,8 @@ public class ParkingSessionService {
         }
         if (request.getLicensePlate() != null && !request.getLicensePlate().isBlank()) {
             String normalizedInput = request.getLicensePlate().replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-            return sessionRepository.findAll().stream()
-                    .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
-                    .filter(s -> {
-                        String normPlate = s.getLicensePlate().replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-                        return normPlate.equals(normalizedInput);
-                    })
+            return sessionRepository.findActiveSessionsByPlate(
+                    SessionStatus.ACTIVE, request.getLicensePlate(), normalizedInput).stream()
                     .findFirst()
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Không tìm thấy session đang hoạt động với biển số: " + request.getLicensePlate()));
@@ -1142,6 +1128,101 @@ public class ParkingSessionService {
      */
     private String generateSessionCode() {
         return uniqueCodeGeneratorService.generateSessionCode();
+    }
+
+    /**
+     * Build response DTO trực tiếp khi đã có sẵn thông tin matchedPass hoặc reservation (dùng trong checkIn).
+     */
+    private SessionResponse buildSessionResponseDirect(ParkingSession session, Zone zone, String paymentStatus, ParkingPass matchedPass, Reservation reservation) {
+        if (matchedPass == null && reservation == null) {
+            return buildSessionResponse(session, zone, paymentStatus);
+        }
+
+        VehicleType vehicleType = session.getVehicleType();
+        Building building = null;
+        if (zone != null && zone.getFloor() != null) {
+            building = zone.getFloor().getBuilding();
+        } else if (session.getEntryMainGate() != null) {
+            building = session.getEntryMainGate().getBuilding();
+        }
+
+        SessionResponse.SessionResponseBuilder builder = SessionResponse.builder()
+                .sessionId(session.getId())
+                .sessionCode(session.getSessionCode())
+                .sessionCreatedAt(session.getCreatedAt())
+                .licensePlate(session.getLicensePlate())
+                .vehicleTypeId(vehicleType != null ? vehicleType.getId() : null)
+                .vehicleType(vehicleType != null ? vehicleType.getName() : null)
+                .entryTime(session.getEntryTime())
+                .exitTime(session.getExitTime())
+                .zoneEntryTime(session.getZoneEntryTime())
+                .zoneExitTime(session.getZoneExitTime())
+                .durationMinutes(session.getDurationMinutes())
+                .totalFee(session.getTotalFee())
+                .status(session.getStatus())
+                .driverType(session.getDriverType())
+                .paymentStatus(paymentStatus)
+                .entryPlateImageUrl(session.getEntryPlateImageUrl())
+                .entryFaceImageUrl(session.getEntryFaceImageUrl())
+                .exitPlateImageUrl(session.getExitPlateImageUrl())
+                .exitFaceImageUrl(session.getExitFaceImageUrl())
+                .entryMainGateCode(session.getEntryMainGate() != null ? session.getEntryMainGate().getGateCode() : null)
+                .entryMainGateName(session.getEntryMainGate() != null ? session.getEntryMainGate().getGateName() : null)
+                .exitMainGateCode(session.getExitMainGate() != null ? session.getExitMainGate().getGateCode() : null)
+                .exitMainGateName(session.getExitMainGate() != null ? session.getExitMainGate().getGateName() : null)
+                .entryZoneGateCode(session.getEntryZoneGate() != null ? session.getEntryZoneGate().getGateCode() : null)
+                .entryZoneGateName(session.getEntryZoneGate() != null ? session.getEntryZoneGate().getGateName() : null)
+                .exitZoneGateCode(session.getExitZoneGate() != null ? session.getExitZoneGate().getGateCode() : null)
+                .exitZoneGateName(session.getExitZoneGate() != null ? session.getExitZoneGate().getGateName() : null)
+                .exitPlate(session.getExitPlate())
+                .isPlateMismatched(session.getIsPlateMismatched())
+                .notes(session.getNotes());
+
+        if (zone != null) {
+            builder.zoneId(zone.getId())
+                    .zoneCode(zone.getZoneCode())
+                    .floorName(zone.getFloor() != null ? zone.getFloor().getFloorName() : null)
+                    .zoneName(zone.getZoneName())
+                    .guideMessage(String.format(
+                            "Vui lòng đến Tầng %s - %s",
+                            zone.getFloor() != null ? zone.getFloor().getFloorName() : "--",
+                            zone.getZoneName()));
+        }
+
+        if (building != null) {
+            builder.buildingId(building.getId())
+                    .buildingName(building.getName())
+                    .buildingAddress(building.getAddress());
+        }
+
+        String customerName = null;
+        String passType = null;
+        String rCode = null;
+
+        if (matchedPass != null) {
+            if (matchedPass.getUser() != null) customerName = matchedPass.getUser().getFullName();
+            if (matchedPass.getPassType() != null) passType = matchedPass.getPassType().name();
+        }
+
+        if (reservation != null) {
+            rCode = reservation.getReservationCode();
+            if (customerName == null && reservation.getUser() != null) {
+                customerName = reservation.getUser().getFullName();
+            }
+        }
+
+        if (customerName == null) {
+            List<UserLicensePlate> plateUsers = userLicensePlateRepository.findByLicensePlate(session.getLicensePlate());
+            if (!plateUsers.isEmpty() && plateUsers.get(0).getUser() != null) {
+                customerName = plateUsers.get(0).getUser().getFullName();
+            }
+        }
+
+        builder.customerName(customerName)
+                .passType(passType)
+                .reservationCode(rCode);
+
+        return builder.build();
     }
 
     /**
@@ -1300,28 +1381,12 @@ public class ParkingSessionService {
     public List<SessionResponse> getSessionHistory(String licensePlate) {
         String normalizedInput = LicensePlateUtil.normalize(licensePlate);
 
-        List<ParkingSession> sessions = sessionRepository.findAll().stream()
-                .filter(session -> LicensePlateUtil.normalize(session.getLicensePlate()).equals(normalizedInput))
-                .sorted((a, b) -> {
-                    LocalDateTime at = a.getEntryTime();
-                    LocalDateTime bt = b.getEntryTime();
+        List<ParkingSession> sessions = sessionRepository.findByLicensePlateOrderByEntryTimeDesc(normalizedInput);
+        if (sessions.isEmpty()) {
+            sessions = sessionRepository.findByLicensePlateOrderByEntryTimeDesc(licensePlate);
+        }
 
-                    if (at == null && bt == null)
-                        return 0;
-                    if (at == null)
-                        return 1;
-                    if (bt == null)
-                        return -1;
-
-                    return bt.compareTo(at);
-                })
-                .toList();
-
-        return sessions.stream().map(session -> {
-            Zone zone = session.getZone();
-            String paymentStatus = session.getStatus() == SessionStatus.COMPLETED ? "PAID" : "PENDING";
-            return buildSessionResponse(session, zone, paymentStatus);
-        }).toList();
+        return buildSessionResponsesBatch(sessions);
     }
 
     /**
@@ -1329,39 +1394,9 @@ public class ParkingSessionService {
      * Staff/Manager/Admin.
      */
     public List<SessionResponse> getAllSessions() {
-        return sessionRepository
-                .findAll(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC,
-                        "entryTime"))
-                .stream()
-                .map(session -> {
-                    Zone zone = session.getZone();
-                    String paymentStatus = session.getStatus() == SessionStatus.COMPLETED ? "PAID" : "PENDING";
-                    SessionResponse response = buildSessionResponse(session, zone, paymentStatus);
-                    if (session.getStatus() == ParkingSession.SessionStatus.ACTIVE) {
-                        int currentMinutes = (int) java.time.temporal.ChronoUnit.MINUTES.between(session.getEntryTime(),
-                                LocalDateTime.now());
-                        response.setDurationMinutes(currentMinutes);
-                        if (zone != null && zone.getFloor() != null && zone.getFloor().getBuilding() != null) {
-                            try {
-                                BigDecimal estimatedFee;
-                                if (session.getDriverType() == ParkingSession.DriverType.SUBSCRIBER) {
-                                    estimatedFee = BigDecimal.ZERO;
-                                } else {
-                                    estimatedFee = pricingService.estimateFee(
-                                            zone.getFloor().getBuilding().getId(),
-                                            session.getVehicleType().getId(),
-                                            currentMinutes);
-                                }
-                                response.setTotalFee(estimatedFee);
-                            } catch (Exception e) {
-                                log.warn("Failed to estimate fee for session {}: {}", session.getSessionCode(),
-                                        e.getMessage());
-                            }
-                        }
-                    }
-                    return response;
-                })
-                .toList();
+        List<ParkingSession> sessions = sessionRepository.findAll(
+                Sort.by(Sort.Direction.DESC, "entryTime"));
+        return buildSessionResponsesBatch(sessions);
     }
 
     public Page<SessionResponse> searchSessions(String licensePlate, ParkingSession.SessionStatus status, int page,
@@ -1369,14 +1404,172 @@ public class ParkingSessionService {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "entryTime"));
         String plateParam = (licensePlate == null || licensePlate.trim().isEmpty()) ? null
                 : "%" + licensePlate.trim().toUpperCase() + "%";
-        Page<ParkingSession> sessions = sessionRepository.searchSessions(plateParam, status, pageable);
-        return sessions.map(session -> {
+        Page<ParkingSession> sessionsPage = sessionRepository.searchSessions(plateParam, status, pageable);
+        List<SessionResponse> batchResponses = buildSessionResponsesBatch(sessionsPage.getContent());
+        return new org.springframework.data.domain.PageImpl<>(batchResponses, pageable, sessionsPage.getTotalElements());
+    }
+
+    /**
+     * Tối ưu hóa N+1 Query: Batch build DTO SessionResponse cho danh sách ParkingSession.
+     * Gom nhóm biển số xe và query 3 bảng phụ (ParkingPass, Reservation, UserLicensePlate) đúng 3 lần duy nhất.
+     */
+    private List<SessionResponse> buildSessionResponsesBatch(List<ParkingSession> sessions) {
+        if (sessions == null || sessions.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> plates = sessions.stream()
+                .map(ParkingSession::getLicensePlate)
+                .filter(p -> p != null && !p.isBlank())
+                .map(LicensePlateUtil::normalize)
+                .distinct()
+                .toList();
+
+        if (plates.isEmpty()) {
+            return sessions.stream()
+                    .map(s -> buildSessionResponse(s, s.getZone(), s.getStatus() == SessionStatus.COMPLETED ? "PAID" : "PENDING"))
+                    .toList();
+        }
+
+        // 1. Query gộp 1 lần cho toàn bộ vé tháng
+        List<ParkingPass> activePasses = parkingPassRepository.findByLicensePlateInAndStatus(
+                plates, ParkingPass.PassStatus.ACTIVE);
+        Map<String, List<ParkingPass>> passMap = activePasses.stream()
+                .collect(Collectors.groupingBy(p -> LicensePlateUtil.normalize(p.getLicensePlate())));
+
+        // 2. Query gộp 1 lần cho toàn bộ đặt chỗ
+        List<Reservation> reservations = reservationRepository.findByLicensePlateInAndStatusIn(
+                plates, List.of(
+                        Reservation.ReservationStatus.COMPLETED,
+                        Reservation.ReservationStatus.CONFIRMED,
+                        Reservation.ReservationStatus.PENDING));
+        Map<String, List<Reservation>> resMap = reservations.stream()
+                .collect(Collectors.groupingBy(r -> LicensePlateUtil.normalize(r.getLicensePlate())));
+
+        // 3. Query gộp 1 lần cho toàn bộ người dùng sở hữu biển số
+        List<UserLicensePlate> plateUsers = userLicensePlateRepository.findByLicensePlateIn(plates);
+        Map<String, List<UserLicensePlate>> userMap = plateUsers.stream()
+                .collect(Collectors.groupingBy(u -> LicensePlateUtil.normalize(u.getLicensePlate())));
+
+        java.time.LocalDate today = java.time.LocalDate.now();
+
+        return sessions.stream().map(session -> {
             Zone zone = session.getZone();
             String paymentStatus = session.getStatus() == SessionStatus.COMPLETED ? "PAID" : "PENDING";
-            SessionResponse response = buildSessionResponse(session, zone, paymentStatus);
-            if (session.getStatus() == ParkingSession.SessionStatus.ACTIVE) {
-                int currentMinutes = (int) java.time.temporal.ChronoUnit.MINUTES.between(session.getEntryTime(),
-                        LocalDateTime.now());
+            String normPlate = LicensePlateUtil.normalize(session.getLicensePlate());
+
+            Building building = null;
+            if (zone != null && zone.getFloor() != null) {
+                building = zone.getFloor().getBuilding();
+            } else if (session.getEntryMainGate() != null) {
+                building = session.getEntryMainGate().getBuilding();
+            }
+
+            VehicleType vehicleType = session.getVehicleType();
+
+            SessionResponse.SessionResponseBuilder builder = SessionResponse.builder()
+                    .sessionId(session.getId())
+                    .sessionCode(session.getSessionCode())
+                    .sessionCreatedAt(session.getCreatedAt())
+                    .licensePlate(session.getLicensePlate())
+                    .vehicleTypeId(vehicleType != null ? vehicleType.getId() : null)
+                    .vehicleType(vehicleType != null ? vehicleType.getName() : null)
+                    .entryTime(session.getEntryTime())
+                    .exitTime(session.getExitTime())
+                    .zoneEntryTime(session.getZoneEntryTime())
+                    .zoneExitTime(session.getZoneExitTime())
+                    .durationMinutes(session.getDurationMinutes())
+                    .totalFee(session.getTotalFee())
+                    .status(session.getStatus())
+                    .driverType(session.getDriverType())
+                    .paymentStatus(paymentStatus)
+                    .entryPlateImageUrl(session.getEntryPlateImageUrl())
+                    .entryFaceImageUrl(session.getEntryFaceImageUrl())
+                    .exitPlateImageUrl(session.getExitPlateImageUrl())
+                    .exitFaceImageUrl(session.getExitFaceImageUrl())
+                    .entryMainGateCode(session.getEntryMainGate() != null ? session.getEntryMainGate().getGateCode() : null)
+                    .entryMainGateName(session.getEntryMainGate() != null ? session.getEntryMainGate().getGateName() : null)
+                    .exitMainGateCode(session.getExitMainGate() != null ? session.getExitMainGate().getGateCode() : null)
+                    .exitMainGateName(session.getExitMainGate() != null ? session.getExitMainGate().getGateName() : null)
+                    .entryZoneGateCode(session.getEntryZoneGate() != null ? session.getEntryZoneGate().getGateCode() : null)
+                    .entryZoneGateName(session.getEntryZoneGate() != null ? session.getEntryZoneGate().getGateName() : null)
+                    .exitZoneGateCode(session.getExitZoneGate() != null ? session.getExitZoneGate().getGateCode() : null)
+                    .exitZoneGateName(session.getExitZoneGate() != null ? session.getExitZoneGate().getGateName() : null)
+                    .exitPlate(session.getExitPlate())
+                    .isPlateMismatched(session.getIsPlateMismatched())
+                    .notes(session.getNotes());
+
+            if (zone != null) {
+                builder.zoneId(zone.getId())
+                        .zoneCode(zone.getZoneCode())
+                        .floorName(zone.getFloor() != null ? zone.getFloor().getFloorName() : null)
+                        .zoneName(zone.getZoneName())
+                        .guideMessage(String.format(
+                                "Vui lòng đến Tầng %s - %s",
+                                zone.getFloor() != null ? zone.getFloor().getFloorName() : "--",
+                                zone.getZoneName()));
+            }
+
+            if (building != null) {
+                builder.buildingId(building.getId())
+                        .buildingName(building.getName())
+                        .buildingAddress(building.getAddress());
+            }
+
+            String customerName = null;
+            String passType = null;
+
+            List<ParkingPass> sessionPasses = passMap.getOrDefault(normPlate, List.of());
+            for (ParkingPass pass : sessionPasses) {
+                if (building != null && pass.getBuilding() != null && !building.getId().equals(pass.getBuilding().getId())) {
+                    continue;
+                }
+                if (!today.isBefore(pass.getStartDate()) && !today.isAfter(pass.getEndDate())) {
+                    if (pass.getUser() != null) {
+                        customerName = pass.getUser().getFullName();
+                    }
+                    if (pass.getPassType() != null) {
+                        passType = pass.getPassType().name();
+                    }
+                    break;
+                }
+            }
+
+            String rCode = null;
+            List<Reservation> sessionReservations = resMap.getOrDefault(normPlate, List.of());
+            LocalDateTime entryTime = session.getEntryTime();
+            if (entryTime != null && !sessionReservations.isEmpty()) {
+                sessionReservations = sessionReservations.stream()
+                        .filter(res -> {
+                            LocalDateTime allowedFrom = res.getReservedFrom().minusMinutes(60);
+                            LocalDateTime allowedTo = res.getReservedTo();
+                            return !entryTime.isBefore(allowedFrom) && !entryTime.isAfter(allowedTo);
+                        })
+                        .toList();
+            }
+
+            if (!sessionReservations.isEmpty()) {
+                rCode = sessionReservations.get(0).getReservationCode();
+                if (customerName == null && sessionReservations.get(0).getUser() != null) {
+                    customerName = sessionReservations.get(0).getUser().getFullName();
+                }
+            }
+
+            if (customerName == null) {
+                List<UserLicensePlate> sessionUsers = userMap.getOrDefault(normPlate, List.of());
+                if (!sessionUsers.isEmpty() && sessionUsers.get(0).getUser() != null) {
+                    customerName = sessionUsers.get(0).getUser().getFullName();
+                }
+            }
+
+            builder.customerName(customerName)
+                    .passType(passType)
+                    .reservationCode(rCode);
+
+            SessionResponse response = builder.build();
+
+            if (session.getStatus() == SessionStatus.ACTIVE) {
+                int currentMinutes = (int) ChronoUnit.MINUTES.between(session.getEntryTime(), LocalDateTime.now());
                 response.setDurationMinutes(currentMinutes);
                 if (zone != null && zone.getFloor() != null && zone.getFloor().getBuilding() != null) {
                     try {
@@ -1395,8 +1588,9 @@ public class ParkingSessionService {
                     }
                 }
             }
+
             return response;
-        });
+        }).toList();
     }
 
     @Transactional(readOnly = true)
@@ -1460,10 +1654,9 @@ public class ParkingSessionService {
     }
 
     private List<EligibleZoneResponse> buildEligibleZonesForVehicleType(UUID vehicleTypeId) {
-        // Lấy toàn bộ zone của loại phương tiện này
-        List<Zone> allMatchedZones = zoneRepository.findAll().stream()
-                .filter(z -> z.getVehicleType().getId().equals(vehicleTypeId))
-                .filter(z -> z.getStatus() == Zone.ZoneStatus.ACTIVE || z.getStatus() == Zone.ZoneStatus.FULL)
+        // Lấy các zone của loại phương tiện này trực tiếp từ DB
+        List<Zone> allMatchedZones = zoneRepository.findByVehicleTypeIdAndStatusIn(
+                vehicleTypeId, List.of(Zone.ZoneStatus.ACTIVE, Zone.ZoneStatus.FULL)).stream()
                 .sorted((z1, z2) -> {
                     // Ưu tiên các zone có thể chọn trước
                     boolean z1Selectable = isZoneSelectable(z1);

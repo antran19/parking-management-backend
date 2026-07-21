@@ -16,6 +16,7 @@ public interface ParkingPassRepository extends JpaRepository<ParkingPass, UUID> 
     List<ParkingPass> findByUser(User user);
     List<ParkingPass> findByUserAndStatus(User user, ParkingPass.PassStatus status);
     List<ParkingPass> findByLicensePlateAndBuildingAndStatus(String licensePlate, Building building, ParkingPass.PassStatus status);
+    List<ParkingPass> findByLicensePlateInAndStatus(List<String> licensePlates, ParkingPass.PassStatus status);
 
     java.util.Optional<ParkingPass> findByParkingPassCode(String parkingPassCode);
 

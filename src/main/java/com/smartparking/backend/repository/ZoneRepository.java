@@ -31,4 +31,12 @@ public interface ZoneRepository extends JpaRepository<Zone, UUID> {
        List<Zone> findAllByBuildingId(@Param("buildingId") UUID buildingId);
 
        List<Zone> findAllByFloorId(UUID floorId);
+
+       @Query("SELECT z FROM Zone z " +
+              "JOIN FETCH z.floor f " +
+              "JOIN FETCH f.building b " +
+              "WHERE z.vehicleType.id = :vehicleTypeId " +
+              "AND z.status IN :statuses")
+       List<Zone> findByVehicleTypeIdAndStatusIn(@Param("vehicleTypeId") UUID vehicleTypeId,
+                     @Param("statuses") List<ZoneStatus> statuses);
 }

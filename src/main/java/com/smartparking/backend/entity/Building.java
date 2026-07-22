@@ -29,6 +29,12 @@ public class Building {
     @Column(name = "operating_hours_end")
     private LocalTime operatingHoursEnd;
 
+    @Column(name = "total_floors")
+    private Integer totalFloors; // Tổng số tầng (bao gồm hầm)
+
+    @Column(length = 500)
+    private String description; // Mô tả tòa nhà
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

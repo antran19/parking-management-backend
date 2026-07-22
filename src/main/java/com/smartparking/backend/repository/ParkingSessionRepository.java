@@ -18,6 +18,8 @@ import java.util.UUID;
 public interface ParkingSessionRepository extends JpaRepository<ParkingSession, UUID> {
        Optional<ParkingSession> findBySessionCode(String sessionCode);
 
+       boolean existsByZoneId(UUID zoneId);
+
        @Query("SELECT MAX(s.sessionCode) FROM ParkingSession s WHERE s.sessionCode LIKE :prefix%")
        String findMaxSessionCodeByPrefix(@Param("prefix") String prefix);
 

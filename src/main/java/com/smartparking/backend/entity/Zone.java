@@ -41,6 +41,9 @@ public class Zone {
     @Column(nullable = false)
     private Integer capacity = 0;
 
+    @Column(name = "zone_area")
+    private Double zoneArea; // Diện tích thực tế cấp cho zone (m²) — dùng để tính lại slot, null với zone tạo trước khi có tính năng này
+
     @Column(name = "current_count", nullable = false)
     private Integer currentCount = 0;
 

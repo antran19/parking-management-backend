@@ -6,6 +6,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -27,7 +28,7 @@ public class Payment {
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal amount;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = PaymentMethodConverter.class)
     @Column(name = "payment_method", nullable = false, length = 15)
     private PaymentMethod paymentMethod;
 
@@ -51,5 +52,37 @@ public class Payment {
 
     public enum PaymentStatus {
         PENDING, COMPLETED, FAILED, REFUNDED
+    }
+
+    // Ánh xạ an toàn payment_method: các giá trị enum cũ bị đổi tên (vd BANK_TRANSFER -> VIETQR)
+    // hoặc không xác định sẽ được map về giá trị hợp lệ thay vì ném lỗi và làm sập cả request đọc payment.
+    @Converter(autoApply = false)
+    public static class PaymentMethodConverter implements AttributeConverter<PaymentMethod, String> {
+
+        private static final Map<String, PaymentMethod> LEGACY_ALIASES = Map.of(
+                "BANK_TRANSFER", PaymentMethod.VIETQR
+        );
+
+        @Override
+        public String convertToDatabaseColumn(PaymentMethod attribute) {
+            return attribute == null ? null : attribute.name();
+        }
+
+        @Override
+        public PaymentMethod convertToEntityAttribute(String dbData) {
+            if (dbData == null) {
+                return null;
+            }
+            try {
+                return PaymentMethod.valueOf(dbData);
+            } catch (IllegalArgumentException e) {
+                PaymentMethod fallback = LEGACY_ALIASES.get(dbData);
+                if (fallback != null) {
+                    return fallback;
+                }
+                System.err.println("Unknown payment_method value in DB: '" + dbData + "' - falling back to CASH");
+                return PaymentMethod.CASH;
+            }
+        }
     }
 }

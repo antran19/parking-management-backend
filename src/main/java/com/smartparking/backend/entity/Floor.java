@@ -34,6 +34,15 @@ public class Floor {
     @Column(name = "total_slots")
     private Integer totalSlots = 0;
 
+    @Column(name = "floor_area")
+    private Double floorArea; // Diện tích tầng (m²)
+
+    @Column(name = "max_zones")
+    private Integer maxZones; // Số zone tối đa trên tầng
+
+    @Column(length = 200)
+    private String description; // Mô tả tầng
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

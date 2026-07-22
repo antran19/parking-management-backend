@@ -14,12 +14,16 @@ public final class LicensePlateUtil {
 
     public static String getVehicleTypeKey(String vehicleType) {
         if (vehicleType == null) return "CAR";
-        String text = vehicleType.toLowerCase().replaceAll("đ", "d");
-        
+        // NFD-normalize + xóa combining marks trước khi so khớp — chỉ thay "đ" không đủ vì các
+        // nguyên âm có dấu khác (ạ, á, ...) trong "xe đạp" vẫn còn dấu, khiến contains("xe dap") sai.
+        String text = java.text.Normalizer.normalize(vehicleType.toLowerCase(), java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .replace("đ", "d");
+
         if (text.contains("xe dap") || text.contains("bicycle")) return "BICYCLE";
         if (text.contains("xe may") || text.contains("moto") || text.contains("motorbike")) return "MOTORBIKE";
         if (text.contains("xe tai") || text.contains("truck")) return "TRUCK";
-        
+
         return "CAR";
     }
 

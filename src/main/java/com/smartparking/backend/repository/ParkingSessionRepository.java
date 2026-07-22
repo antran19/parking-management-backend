@@ -28,6 +28,14 @@ public interface ParkingSessionRepository extends JpaRepository<ParkingSession, 
 
        Optional<ParkingSession> findByLicensePlateAndStatus(String licensePlate, SessionStatus status);
 
+       @Query("SELECT s FROM ParkingSession s WHERE s.status = :status " +
+              "AND (s.licensePlate = :licensePlate OR s.licensePlate = :normalizedPlate " +
+              "OR UPPER(REPLACE(REPLACE(s.licensePlate, '-', ''), ' ', '')) = UPPER(:normalizedPlate))")
+       List<ParkingSession> findActiveSessionsByPlate(
+              @Param("status") SessionStatus status,
+              @Param("licensePlate") String licensePlate,
+              @Param("normalizedPlate") String normalizedPlate);
+
        // Lấy các session có entryTime trong khoảng
        List<ParkingSession> findByEntryTimeBetween(LocalDateTime from, LocalDateTime to);
 

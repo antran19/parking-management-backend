@@ -206,9 +206,9 @@ public class SessionController {
     @Operation(summary = "Lịch sử phiên gửi xe (Staff)", description = "Hỗ trợ phân trang và lọc theo biển số/status")
     @GetMapping("/staff/sessions/history")
     @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN', 'SECURITY')")
-    public ResponseEntity<ApiResponse<?>> getSessionsHistory(
-            @RequestParam(value = "page", required = false) Integer page,
-            @RequestParam(value = "size", required = false) Integer size,
+    public ResponseEntity<ApiResponse<Page<SessionResponse>>> getSessionsHistory(
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size,
             @RequestParam(value = "licensePlate", required = false) String licensePlate,
             @RequestParam(value = "status", required = false) String status) {
 
@@ -226,11 +226,6 @@ public class SessionController {
             } catch (IllegalArgumentException e) {
                 // Ignore invalid status enum string
             }
-        }
-
-        if (page == null || size == null) {
-            java.util.List<SessionResponse> history = parkingSessionService.getAllSessions();
-            return ResponseEntity.ok(ApiResponse.success(history));
         }
 
         Page<SessionResponse> history = parkingSessionService.searchSessions(licensePlate, sessionStatus, page, size);

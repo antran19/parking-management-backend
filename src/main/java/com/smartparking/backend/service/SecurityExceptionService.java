@@ -3,17 +3,23 @@ package com.smartparking.backend.service;
 import com.smartparking.backend.dto.request.SecurityExceptionRequest;
 import com.smartparking.backend.dto.response.ExceptionLogResponse;
 import com.smartparking.backend.entity.ExceptionLog;
-//import com.smartparking.backend.entity.ParkingSession;
+import com.smartparking.backend.entity.ParkingPass;
+import com.smartparking.backend.entity.ParkingSession;
 import com.smartparking.backend.entity.User;
 import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.repository.ExceptionLogRepository;
-//import com.smartparking.backend.repository.ParkingSessionRepository;
+import com.smartparking.backend.repository.ParkingPassRepository;
+import com.smartparking.backend.repository.ParkingSessionRepository;
 import com.smartparking.backend.repository.UserRepository;
+import com.smartparking.backend.util.LicensePlateUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -32,11 +38,50 @@ public class SecurityExceptionService {
 
     private final UserRepository userRepository;
 
+    private final ParkingSessionRepository parkingSessionRepository;
+
+    private final ParkingPassRepository parkingPassRepository;
+
     // Constructor injection (Quy tắc bắt buộc)
     public SecurityExceptionService(ExceptionLogRepository exceptionLogRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ParkingSessionRepository parkingSessionRepository,
+            ParkingPassRepository parkingPassRepository) {
         this.exceptionLogRepository = exceptionLogRepository;
         this.userRepository = userRepository;
+        this.parkingSessionRepository = parkingSessionRepository;
+        this.parkingPassRepository = parkingPassRepository;
+    }
+
+    /**
+     * Kiểm tra biển số xe để báo cáo sự cố: có phiên đỗ đang mở hoặc gói cước còn hạn hay không.
+     * (Khôi phục từ branch feature/security-be-v7 — Thiên phụ trách)
+     */
+    public Map<String, Object> checkPlateForException(String licensePlate) {
+        if (licensePlate == null || licensePlate.isBlank()) {
+            throw new BusinessException("Biển số không được để trống");
+        }
+        String normalizedPlate = LicensePlateUtil.normalize(licensePlate);
+
+        // 1. Kiểm tra phiên đỗ đang hoạt động
+        boolean hasActiveSession = parkingSessionRepository
+                .findByLicensePlateAndStatus(normalizedPlate, ParkingSession.SessionStatus.ACTIVE)
+                .isPresent();
+
+        // 2. Kiểm tra gói cước định kỳ còn hạn
+        LocalDate today = LocalDate.now();
+        boolean hasActivePass = parkingPassRepository
+                .findAll()
+                .stream()
+                .filter(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE)
+                .filter(pass -> LicensePlateUtil.normalize(pass.getLicensePlate()).equals(normalizedPlate))
+                .anyMatch(pass -> !today.isBefore(pass.getStartDate()) && !today.isAfter(pass.getEndDate()));
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("licensePlate", normalizedPlate);
+        result.put("hasActiveSession", hasActiveSession);
+        result.put("hasActivePass", hasActivePass);
+        return result;
     }
 
     /**

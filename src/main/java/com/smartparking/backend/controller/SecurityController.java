@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -87,6 +88,19 @@ public class SecurityController {
             @Valid @RequestBody SecurityExceptionRequest request) {
         ExceptionLogResponse exceptionLog = securityExceptionService.logException(request);
         return ResponseEntity.ok(ApiResponse.success("Đã ghi nhận sự cố an ninh", exceptionLog));
+    }
+
+    /**
+     * Kiểm tra biển số xe để báo cáo sự cố (Có trong bãi hoặc có gói cước còn hạn)
+     * GET /api/v1/security/exceptions/check-plate
+     */
+    @Operation(summary = "Kiểm tra biển số xe báo sự cố", description = "Kiểm tra xem biển số xe có phiên đỗ xe đang mở hoặc gói cước định kỳ còn hạn hay không")
+    @GetMapping("/exceptions/check-plate")
+    @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> checkPlate(
+            @RequestParam("plate") String licensePlate) {
+        Map<String, Object> result = securityExceptionService.checkPlateForException(licensePlate);
+        return ResponseEntity.ok(ApiResponse.success(result));
     }
 
     /**

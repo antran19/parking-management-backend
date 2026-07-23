@@ -14,6 +14,7 @@ public class BlacklistAlertResponse {
     private String licensePlate;
     private String normalizedPlate;
     private BlacklistPlate.BlacklistReason reason;
+    private String vehicleType;
     private String description;
     private UUID gateId;
     private String gateCode;

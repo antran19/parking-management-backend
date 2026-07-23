@@ -124,7 +124,7 @@ public class SecurityController {
      */
     @Operation(summary = "Giải quyết sự cố", description = "Đánh dấu sự cố đã được xử lý bởi nhân viên")
     @PutMapping("/exceptions/{id}/resolve")
-    @PreAuthorize("hasAnyRole('SECURITY', 'STAFF', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("@permissionGuard.canResolveIncident()")
     public ResponseEntity<ApiResponse<ExceptionLogResponse>> resolveException(
             @PathVariable UUID id,
             @RequestBody Map<String, Object> body) {
@@ -270,6 +270,7 @@ public class SecurityController {
      */
     @Operation(summary = "Thêm biển số vào danh sách đen", description = "Blacklist biển số xe vi phạm")
     @PostMapping("/blacklist")
+    @PreAuthorize("@permissionGuard.canManageBlacklist()")
     public ResponseEntity<ApiResponse<BlacklistPlateResponse>> addBlacklistPlate(
             @Valid @RequestBody BlacklistPlateRequest request) {
         BlacklistPlateResponse response = blacklistService.addToBlacklist(request);
@@ -295,7 +296,7 @@ public class SecurityController {
      */
     @Operation(summary = "Gỡ biển số khỏi blacklist", description = "Chỉ Admin/Manager mới được gỡ")
     @DeleteMapping("/blacklist/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("@permissionGuard.canManageBlacklist()")
     public ResponseEntity<ApiResponse<BlacklistPlateResponse>> removeBlacklistPlate(
             @PathVariable UUID id,
             @Valid @RequestBody BlacklistRemoveRequest request) {

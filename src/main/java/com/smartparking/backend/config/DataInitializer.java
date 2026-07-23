@@ -225,7 +225,7 @@ public class DataInitializer implements CommandLineRunner {
                         .licensePlate("30A-999.88")
                         .build()));
 
-        systemSettingsRepository.findAll().stream()
+        SystemSettings sysSettings = systemSettingsRepository.findAll().stream()
                 .findFirst()
                 .orElseGet(() -> systemSettingsRepository.save(SystemSettings.builder()
                         .gracePeriodMinutes(10)
@@ -233,6 +233,18 @@ public class DataInitializer implements CommandLineRunner {
                         .vatPercentage(10)
                         .sosEnabled(true)
                         .build()));
+        // Backfill cột phân quyền mới nếu row cũ có giá trị NULL (ddl-auto thêm cột NULL).
+        // Chỉ backfill khi NULL — KHÔNG đụng chuỗi rỗng "" (admin cố ý bỏ hết role → chỉ ADMIN).
+        boolean settingsChanged = false;
+        if (sysSettings.getIncidentResolverRoles() == null) {
+            sysSettings.setIncidentResolverRoles("SECURITY,MANAGER");
+            settingsChanged = true;
+        }
+        if (sysSettings.getBlacklistManagerRoles() == null) {
+            sysSettings.setBlacklistManagerRoles("SECURITY,MANAGER");
+            settingsChanged = true;
+        }
+        if (settingsChanged) systemSettingsRepository.save(sysSettings);
 
         log.info("✅ DataInitializer: Seed/repair hoàn tất. Users: {}, Buildings: {}, Floors: {}, Zones: {}, Gates: {}, PricingRules: {}",
                 userRepository.count(), buildingRepository.count(), floorRepository.count(), zoneRepository.count(), gateRepository.count(), pricingRuleRepository.count());

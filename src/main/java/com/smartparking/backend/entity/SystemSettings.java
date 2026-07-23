@@ -33,6 +33,14 @@ public class SystemSettings {
     @Builder.Default
     private Boolean sosEnabled = true;
 
+    @Column(name = "incident_resolver_roles", length = 100)
+    @Builder.Default
+    private String incidentResolverRoles = "SECURITY,MANAGER";
+
+    @Column(name = "blacklist_manager_roles", length = 100)
+    @Builder.Default
+    private String blacklistManagerRoles = "SECURITY,MANAGER";
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

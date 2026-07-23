@@ -569,6 +569,10 @@ public class AdminManagementController {
         if (body.containsKey("currency")) settings.setCurrency(textOrDefault(body, "currency", settings.getCurrency()));
         if (body.containsKey("vat")) settings.setVatPercentage(number(body, "vat", settings.getVatPercentage()));
         if (body.containsKey("sosEnabled")) settings.setSosEnabled(Boolean.parseBoolean(String.valueOf(body.get("sosEnabled"))));
+        if (body.containsKey("incidentResolverRoles"))
+            settings.setIncidentResolverRoles(sanitizeRoles(body.get("incidentResolverRoles")));
+        if (body.containsKey("blacklistManagerRoles"))
+            settings.setBlacklistManagerRoles(sanitizeRoles(body.get("blacklistManagerRoles")));
         return ResponseEntity.ok(ApiResponse.success(
                 "Đã cập nhật cài đặt hệ thống", settingsMap(systemSettingsRepository.save(settings))));
     }
@@ -1024,7 +1028,35 @@ public class AdminManagementController {
         map.put("currency", settings.getCurrency());
         map.put("vat", settings.getVatPercentage());
         map.put("sosEnabled", settings.getSosEnabled() != null ? settings.getSosEnabled() : true);
+        map.put("incidentResolverRoles", toRoleList(settings.getIncidentResolverRoles()));
+        map.put("blacklistManagerRoles", toRoleList(settings.getBlacklistManagerRoles()));
         return map;
+    }
+
+    /** Các role admin được phép bật/tắt (ADMIN luôn có quyền nên không nằm ở đây).
+     *  STAFF không có màn UI cho giải quyết sự cố / blacklist nên không đưa vào. */
+    private static final java.util.Set<String> TOGGLEABLE_ROLES =
+            java.util.Set.of("SECURITY", "MANAGER");
+
+    private java.util.List<String> toRoleList(String csv) {
+        if (csv == null || csv.isBlank()) return java.util.List.of();
+        return java.util.Arrays.stream(csv.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /** Nhận List hoặc CSV, giữ lại chỉ role hợp lệ (STAFF/SECURITY/MANAGER), trả về CSV. */
+    private String sanitizeRoles(Object value) {
+        java.util.stream.Stream<String> stream;
+        if (value instanceof java.util.List<?> list) {
+            stream = list.stream().map(String::valueOf);
+        } else {
+            stream = java.util.Arrays.stream(String.valueOf(value).split(","));
+        }
+        return stream.map(s -> s.trim().toUpperCase())
+                .filter(TOGGLEABLE_ROLES::contains)
+                .distinct()
+                .collect(java.util.stream.Collectors.joining(","));
     }
 
     private Map<String, Object> buildingMap(Building building) {

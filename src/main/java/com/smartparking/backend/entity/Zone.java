@@ -54,9 +54,6 @@ public class Zone {
     @Column(nullable = false, length = 20)
     private ZoneStatus status = ZoneStatus.ACTIVE;
 
-    @Column(name = "distance_to_gate")
-    private Integer distanceToGate;
-
     public enum ZoneStatus {
         ACTIVE, FULL, MAINTENANCE, LOCKED
     }

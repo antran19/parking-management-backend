@@ -1665,19 +1665,8 @@ public class ParkingSessionService {
                         return z1Selectable ? -1 : 1;
                     }
 
-                    // Sắp xếp ưu tiên:
-                    // 1. Số lượng chỗ trống giảm dần (tức occupied tăng dần)
-                    int occ1 = (z1.getCurrentCount() != null ? z1.getCurrentCount() : 0)
-                            + (z1.getReservedCount() != null ? z1.getReservedCount() : 0);
-                    int occ2 = (z2.getCurrentCount() != null ? z2.getCurrentCount() : 0)
-                            + (z2.getReservedCount() != null ? z2.getReservedCount() : 0);
-                    if (occ1 != occ2) {
-                        return Integer.compare(occ1, occ2);
-                    }
-                    // 2. Khoảng cách gần nhất
-                    int dist1 = z1.getDistanceToGate() != null ? z1.getDistanceToGate() : Integer.MAX_VALUE;
-                    int dist2 = z2.getDistanceToGate() != null ? z2.getDistanceToGate() : Integer.MAX_VALUE;
-                    return Integer.compare(dist1, dist2);
+                    // Sắp xếp ưu tiên theo Comparator tập trung trong ZoneSuggestionService
+                    return ZoneSuggestionService.getZonePreferenceComparator().compare(z1, z2);
                 })
                 .collect(Collectors.toList());
 

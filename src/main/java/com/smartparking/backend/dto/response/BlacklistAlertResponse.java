@@ -13,6 +13,7 @@ public class BlacklistAlertResponse {
     private String type;
     private String licensePlate;
     private String normalizedPlate;
+    private String vehicleType;
     private BlacklistPlate.BlacklistReason reason;
     private String vehicleType;
     private String description;

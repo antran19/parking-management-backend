@@ -151,20 +151,11 @@ public class ManagerController {
     @PutMapping("/blacklist/{id}/status")
     @Operation(summary = "Gỡ cấm biển số xe khỏi danh sách đen")
     public ResponseEntity<ApiResponse<BlacklistPlateResponse>> removeFromBlacklist(
-        @PathVariable UUID id,
-        @RequestBody BlacklistRemoveRequest request) {
-    BlacklistPlateResponse updated = blacklistService.removeFromBlacklist(id, request);
-    return ResponseEntity.ok(ApiResponse.success(updated));
+            @PathVariable UUID id,
+            @RequestBody BlacklistRemoveRequest request) {
+        BlacklistPlateResponse updated = blacklistService.removeFromBlacklist(id, request);
+        return ResponseEntity.ok(ApiResponse.success(updated));
     }
-    
-
-
-    
-
-
-
-
-
 
     /*
      * =============================================================================
@@ -209,20 +200,23 @@ public class ManagerController {
      * ================================
      */
     // @PostMapping("/gate")
-    // public ResponseEntity<ApiResponse<Map<String, Object>>> createGate(@RequestBody Map<String, Object> body) {
-    //     return ResponseEntity.ok(ApiResponse.success("Đã tạo cổng", managerService.createGate(body)));
+    // public ResponseEntity<ApiResponse<Map<String, Object>>>
+    // createGate(@RequestBody Map<String, Object> body) {
+    // return ResponseEntity.ok(ApiResponse.success("Đã tạo cổng",
+    // managerService.createGate(body)));
     // }
-
 
     // @DeleteMapping("/gate/{id}")
-    // public ResponseEntity<ApiResponse<String>> deleteGate(@PathVariable UUID id) {
-    //     managerService.deleteGate(id);
-    //     return ResponseEntity.ok(ApiResponse.success("Đã xóa cổng", id.toString()));
+    // public ResponseEntity<ApiResponse<String>> deleteGate(@PathVariable UUID id)
+    // {
+    // managerService.deleteGate(id);
+    // return ResponseEntity.ok(ApiResponse.success("Đã xóa cổng", id.toString()));
     // }
-    
+
     @PutMapping("/gate/{id}")
     @Operation(summary = "Cập nhật thông tin/trạng thái hoạt động của cổng")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateGate(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateGate(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         return ResponseEntity.ok(ApiResponse.success("Đã cập nhật cổng", managerService.updateGate(id, body)));
     }
 

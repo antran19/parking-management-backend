@@ -12,11 +12,11 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -32,7 +32,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -41,8 +41,8 @@ volumes:
   postgres_data:
   redis_data:
 
-# ─── HOW TO USE ─────────────────────────────────────────────────────────────
-# Start:   docker-compose up -d
-# Stop:    docker-compose down
-# Logs:    docker-compose logs -f
-# Reset DB: docker-compose down -v && docker-compose up -d
+    # ─── HOW TO USE ─────────────────────────────────────────────────────────────
+    # Start:   docker-compose up -d
+    # Stop:    docker-compose down
+    # Logs:    docker-compose logs -f
+    # Reset DB: docker-compose down -v && docker-compose up -d

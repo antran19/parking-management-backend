@@ -46,7 +46,7 @@ public class Payment {
     private LocalDateTime createdAt;
 
     public enum PaymentMethod {
-        CASH, ONLINE, QR_CODE, BANK_TRANSFER
+        CASH, ONLINE, QR_CODE, VNPAY, VIETQR, NCB
     }
 
     public enum PaymentStatus {

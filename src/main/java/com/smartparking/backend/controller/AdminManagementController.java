@@ -4,6 +4,7 @@ import com.smartparking.backend.dto.response.ApiResponse;
 import com.smartparking.backend.entity.*;
 import com.smartparking.backend.exception.ResourceNotFoundException;
 import com.smartparking.backend.repository.*;
+import com.smartparking.backend.service.UniqueCodeGeneratorService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -45,6 +46,7 @@ public class AdminManagementController {
     private final PaymentRepository paymentRepository;
     private final SystemSettingsRepository systemSettingsRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
 
     public AdminManagementController(UserRepository userRepository,
                                      ZoneRepository zoneRepository,
@@ -56,7 +58,8 @@ public class AdminManagementController {
                                      ParkingPassRepository parkingPassRepository,
                                      PaymentRepository paymentRepository,
                                      SystemSettingsRepository systemSettingsRepository,
-                                     PasswordEncoder passwordEncoder) {
+                                     PasswordEncoder passwordEncoder,
+                                     UniqueCodeGeneratorService uniqueCodeGeneratorService) {
         this.userRepository = userRepository;
         this.zoneRepository = zoneRepository;
         this.floorRepository = floorRepository;
@@ -68,6 +71,7 @@ public class AdminManagementController {
         this.paymentRepository = paymentRepository;
         this.systemSettingsRepository = systemSettingsRepository;
         this.passwordEncoder = passwordEncoder;
+        this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -208,8 +212,14 @@ public class AdminManagementController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> createGate(@RequestBody Map<String, Object> body) {
         Building building = buildingRepository.findById(uuid(body, "buildingId"))
                 .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại"));
+        Zone zone = null;
+        if (body.containsKey("zoneId") && body.get("zoneId") != null && !String.valueOf(body.get("zoneId")).isBlank()) {
+            zone = zoneRepository.findById(uuid(body, "zoneId"))
+                    .orElseThrow(() -> new ResourceNotFoundException("Zone không tồn tại"));
+        }
         Gate gate = Gate.builder()
                 .building(building)
+                .zone(zone)
                 .gateCode(text(body, "gateCode"))
                 .gateName(text(body, "gateName"))
                 .gateType(Gate.GateType.valueOf(textOrDefault(body, "gateType", "MAIN_BOTH").toUpperCase()))
@@ -228,6 +238,15 @@ public class AdminManagementController {
         if (body.containsKey("gateName")) gate.setGateName(text(body, "gateName"));
         if (body.containsKey("gateType")) gate.setGateType(Gate.GateType.valueOf(text(body, "gateType").toUpperCase()));
         if (body.containsKey("isActive")) gate.setIsActive(Boolean.parseBoolean(String.valueOf(body.get("isActive"))));
+        if (body.containsKey("zoneId")) {
+            if (body.get("zoneId") == null || String.valueOf(body.get("zoneId")).isBlank()) {
+                gate.setZone(null);
+            } else {
+                Zone zone = zoneRepository.findById(uuid(body, "zoneId"))
+                        .orElseThrow(() -> new ResourceNotFoundException("Zone không tồn tại"));
+                gate.setZone(zone);
+            }
+        }
         return ResponseEntity.ok(ApiResponse.success("Đã cập nhật cổng", gateMap(gateRepository.save(gate))));
     }
 
@@ -250,6 +269,10 @@ public class AdminManagementController {
         String state = text(body, "state").toUpperCase();
         if (!state.equals("OPEN") && !state.equals("CLOSED"))
             throw new IllegalArgumentException("Trạng thái barrier không hợp lệ (OPEN hoặc CLOSED)");
+        
+        gate.setBarrierState(state);
+        gateRepository.save(gate);
+
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("gateId", gate.getId());
         payload.put("gateName", gate.getGateName());
@@ -339,7 +362,7 @@ public class AdminManagementController {
                 .building(building)
                 .vehicleType(vehicleType)
                 .licensePlate(text(body, "licensePlate").toUpperCase().replaceAll("\\s+", ""))
-                .qrCode("PASS-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
+                .parkingPassCode(uniqueCodeGeneratorService.generateParkingPassCode())
                 .startDate(LocalDate.parse(text(body, "startDate")))
                 .endDate(LocalDate.parse(text(body, "endDate")))
                 .passType(ParkingPass.PassType.valueOf(textOrDefault(body, "passType", "MONTHLY").toUpperCase()))
@@ -406,20 +429,31 @@ public class AdminManagementController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Operation(summary = "Get all completed payments")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getPayments() {
-        List<Map<String, Object>> result = paymentRepository.findAll().stream()
-                .filter(p -> p.getStatus() == Payment.PaymentStatus.COMPLETED)
-                .map(p -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", p.getId());
-                    m.put("referenceType", p.getReferenceType());
-                    m.put("referenceId", p.getReferenceId());
-                    m.put("amount", p.getAmount());
-                    m.put("paymentMethod", p.getPaymentMethod().name());
-                    m.put("transactionId", p.getTransactionId());
-                    m.put("paidAt", p.getPaidAt());
-                    m.put("createdAt", p.getCreatedAt());
-                    return m;
-                }).toList();
+        List<Map<String, Object>> result = new java.util.ArrayList<>();
+        List<Payment> payments;
+        try {
+            payments = paymentRepository.findAll();
+        } catch (Exception e) {
+            System.err.println("[ERROR] Cannot load payments from DB: " + e.getMessage());
+            return ResponseEntity.ok(ApiResponse.success(result));
+        }
+        for (Payment p : payments) {
+            try {
+                if (p.getStatus() != Payment.PaymentStatus.COMPLETED) continue;
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("id", p.getId());
+                m.put("referenceType", p.getReferenceType());
+                m.put("referenceId", p.getReferenceId());
+                m.put("amount", p.getAmount());
+                m.put("paymentMethod", p.getPaymentMethod() != null ? p.getPaymentMethod().name() : null);
+                m.put("transactionId", p.getTransactionId());
+                m.put("paidAt", p.getPaidAt());
+                m.put("createdAt", p.getCreatedAt());
+                result.add(m);
+            } catch (Exception ex) {
+                System.err.println("[WARN] Skipping payment due to mapping error: " + ex.getMessage());
+            }
+        }
         return ResponseEntity.ok(ApiResponse.success(result));
     }
 
@@ -487,8 +521,14 @@ public class AdminManagementController {
         map.put("gateName", gate.getGateName());
         map.put("gateType", gate.getGateType().name());
         map.put("isActive", gate.getIsActive());
+        map.put("barrierState", gate.getBarrierState());
         map.put("buildingId", gate.getBuilding().getId());
         map.put("buildingName", gate.getBuilding().getName());
+        if (gate.getZone() != null) {
+            map.put("zoneId", gate.getZone().getId());
+            map.put("zoneCode", gate.getZone().getZoneCode());
+            map.put("zoneName", gate.getZone().getZoneName());
+        }
         return map;
     }
 
@@ -546,7 +586,7 @@ public class AdminManagementController {
         map.put("vehicleTypeId", pass.getVehicleType().getId());
         map.put("vehicleTypeName", pass.getVehicleType().getName());
         map.put("licensePlate", pass.getLicensePlate());
-        map.put("qrCode", pass.getQrCode());
+        map.put("parkingPassCode", pass.getParkingPassCode());
         map.put("startDate", pass.getStartDate());
         map.put("endDate", pass.getEndDate());
         map.put("passType", pass.getPassType().name());

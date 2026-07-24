@@ -5,6 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -22,11 +23,14 @@ public class BlacklistPlate {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "license_plate", nullable = false, length = 20)
+    @Column(name = "license_plate", nullable = false, length = 50)
     private String licensePlate;
 
     @Column(name = "normalized_plate", nullable = false, length = 20)
     private String normalizedPlate;
+
+    @Column(name = "vehicle_type", length = 50)
+    private String vehicleType;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
@@ -38,6 +42,11 @@ public class BlacklistPlate {
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "blacklist_plate_images", joinColumns = @JoinColumn(name = "blacklist_plate_id"))
+    @Column(name = "image_url")
+    private List<String> imageUrls;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "added_by_user_id", nullable = false)

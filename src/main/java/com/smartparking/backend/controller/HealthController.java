@@ -1,6 +1,7 @@
 package com.smartparking.backend.controller;
 
 import com.smartparking.backend.dto.response.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
  */
 @RestController
 @RequestMapping("/api/v1")
+@Tag(name = "Health Check", description = "APIs for system health monitoring and status")
 public class HealthController {
 
     // TODO: Implement endpoints

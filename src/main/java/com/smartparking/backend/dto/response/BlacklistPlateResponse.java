@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -13,8 +14,10 @@ public class BlacklistPlateResponse {
     private UUID id;
     private String licensePlate;
     private String normalizedPlate;
+    private String vehicleType;
     private BlacklistPlate.BlacklistReason reason;
     private String description;
+    private List<String> imageUrls;
     private Boolean isActive;
     private String addedBy;
     private LocalDateTime addedAt;

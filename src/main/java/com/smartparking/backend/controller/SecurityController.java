@@ -93,7 +93,6 @@ public class SecurityController {
     /**
      * Kiểm tra biển số xe để báo cáo sự cố (có phiên đỗ đang mở hoặc gói cước còn hạn)
      * GET /api/v1/security/exceptions/check-plate
-     * (Khôi phục từ branch feature/security-be-v7 — Thiên phụ trách)
      */
     @Operation(summary = "Kiểm tra biển số xe báo sự cố", description = "Kiểm tra xem biển số xe có phiên đỗ xe đang mở hoặc gói cước định kỳ còn hạn hay không")
     @GetMapping("/exceptions/check-plate")

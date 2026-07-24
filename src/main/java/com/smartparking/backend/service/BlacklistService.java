@@ -221,6 +221,7 @@ public class BlacklistService {
                 .type("BLACKLIST_PLATE_DETECTED")
                 .licensePlate(licensePlate)
                 .normalizedPlate(LicensePlateUtil.normalize(licensePlate))
+                .vehicleType(blacklistPlate.getVehicleType())
                 .reason(blacklistPlate.getReason())
                 .description(blacklistPlate.getDescription())
                 .gateId(gate != null ? gate.getId() : null)

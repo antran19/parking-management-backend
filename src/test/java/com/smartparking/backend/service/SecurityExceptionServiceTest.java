@@ -4,9 +4,13 @@ import com.smartparking.backend.dto.request.SecurityExceptionRequest;
 import com.smartparking.backend.dto.response.ExceptionLogResponse;
 import com.smartparking.backend.entity.ExceptionLog;
 import com.smartparking.backend.entity.User;
+import com.smartparking.backend.entity.ParkingSession;
+import com.smartparking.backend.entity.ParkingPass;
 import com.smartparking.backend.exception.BusinessException;
 import com.smartparking.backend.repository.ExceptionLogRepository;
 import com.smartparking.backend.repository.UserRepository;
+import com.smartparking.backend.repository.ParkingSessionRepository;
+import com.smartparking.backend.repository.ParkingPassRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -41,6 +46,12 @@ class SecurityExceptionServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private ParkingSessionRepository parkingSessionRepository;
+
+    @Mock
+    private ParkingPassRepository parkingPassRepository;
 
     @InjectMocks
     private SecurityExceptionService securityExceptionService;
@@ -154,5 +165,48 @@ class SecurityExceptionServiceTest {
         List<ExceptionLogResponse> result = securityExceptionService.getAllExceptions();
 
         assertEquals(2, result.size());
+    }
+
+    @Test
+    @DisplayName("Flow4: Kiểm tra biển số xe báo sự cố — có session hoạt động")
+    void checkPlateForException_hasActiveSession() {
+        String plate = "51B12345";
+        ParkingSession mockSession = new ParkingSession();
+        mockSession.setLicensePlate(plate);
+        mockSession.setStatus(ParkingSession.SessionStatus.ACTIVE);
+
+        when(parkingSessionRepository.findByLicensePlateAndStatus("51B12345", ParkingSession.SessionStatus.ACTIVE))
+                .thenReturn(Optional.of(mockSession));
+
+        Map<String, Object> result = securityExceptionService.checkPlateForException(plate);
+
+        assertEquals("51B12345", result.get("licensePlate"));
+        assertTrue((Boolean) result.get("hasActiveSession"));
+        assertFalse((Boolean) result.get("hasActivePass"));
+    }
+
+    @Test
+    @DisplayName("Flow4: Kiểm tra biển số xe báo sự cố — có gói cước còn hạn")
+    void checkPlateForException_hasActivePass() {
+        String plate = "51B12345";
+
+        when(parkingSessionRepository.findByLicensePlateAndStatus("51B12345", ParkingSession.SessionStatus.ACTIVE))
+                .thenReturn(Optional.empty());
+
+        ParkingPass mockPass = ParkingPass.builder()
+                .licensePlate(plate)
+                .status(ParkingPass.PassStatus.ACTIVE)
+                .startDate(java.time.LocalDate.now().minusDays(1))
+                .endDate(java.time.LocalDate.now().plusDays(10))
+                .build();
+
+        when(parkingPassRepository.findAll())
+                .thenReturn(List.of(mockPass));
+
+        Map<String, Object> result = securityExceptionService.checkPlateForException(plate);
+
+        assertEquals("51B12345", result.get("licensePlate"));
+        assertFalse((Boolean) result.get("hasActiveSession"));
+        assertTrue((Boolean) result.get("hasActivePass"));
     }
 }

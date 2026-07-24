@@ -35,11 +35,8 @@ import java.util.UUID;
 public class SecurityExceptionService {
 
     private final ExceptionLogRepository exceptionLogRepository;
-
     private final UserRepository userRepository;
-
     private final ParkingSessionRepository parkingSessionRepository;
-
     private final ParkingPassRepository parkingPassRepository;
 
     // Constructor injection (Quy tắc bắt buộc)
@@ -54,9 +51,10 @@ public class SecurityExceptionService {
     }
 
     /**
-     * Kiểm tra biển số xe để báo cáo sự cố: có phiên đỗ đang mở hoặc gói cước còn hạn hay không.
-     * (Khôi phục từ branch feature/security-be-v7 — Thiên phụ trách)
+     * Kiểm tra biển số xe có phiên đỗ đang hoạt động hoặc gói cước còn hạn không
+     * Dùng cho Security khi báo cáo sự cố
      */
+    @Transactional(readOnly = true)
     public Map<String, Object> checkPlateForException(String licensePlate) {
         if (licensePlate == null || licensePlate.isBlank()) {
             throw new BusinessException("Biển số không được để trống");
@@ -71,10 +69,8 @@ public class SecurityExceptionService {
         // 2. Kiểm tra gói cước định kỳ còn hạn
         LocalDate today = LocalDate.now();
         boolean hasActivePass = parkingPassRepository
-                .findAll()
+                .findByLicensePlateAndStatus(normalizedPlate, ParkingPass.PassStatus.ACTIVE)
                 .stream()
-                .filter(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE)
-                .filter(pass -> LicensePlateUtil.normalize(pass.getLicensePlate()).equals(normalizedPlate))
                 .anyMatch(pass -> !today.isBefore(pass.getStartDate()) && !today.isAfter(pass.getEndDate()));
 
         Map<String, Object> result = new HashMap<>();
@@ -194,6 +190,37 @@ public class SecurityExceptionService {
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
+    }
+
+    /**
+     * Kiểm tra biển số xe có phiên hoạt động hoặc đăng ký gói cước hoạt động không
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> checkPlateForException(String licensePlate) {
+        if (licensePlate == null || licensePlate.isBlank()) {
+            throw new BusinessException("Biển số không được để trống");
+        }
+        String normalizedPlate = LicensePlateUtil.normalize(licensePlate);
+
+        // 1. Kiểm tra session hoạt động
+        boolean hasActiveSession = parkingSessionRepository
+                .findByLicensePlateAndStatus(normalizedPlate, ParkingSession.SessionStatus.ACTIVE)
+                .isPresent();
+
+        // 2. Kiểm tra gói cước hoạt động
+        LocalDate today = LocalDate.now();
+        boolean hasActivePass = parkingPassRepository
+                .findAll()
+                .stream()
+                .filter(pass -> pass.getStatus() == ParkingPass.PassStatus.ACTIVE)
+                .filter(pass -> LicensePlateUtil.normalize(pass.getLicensePlate()).equals(normalizedPlate))
+                .anyMatch(pass -> !today.isBefore(pass.getStartDate()) && !today.isAfter(pass.getEndDate()));
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("licensePlate", normalizedPlate);
+        result.put("hasActiveSession", hasActiveSession);
+        result.put("hasActivePass", hasActivePass);
+        return result;
     }
 
     private ExceptionLogResponse mapToResponse(ExceptionLog entity) {

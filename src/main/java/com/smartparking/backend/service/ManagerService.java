@@ -31,6 +31,7 @@ public class ManagerService {
     private final GateRepository gateRepository;
     private final ParkingSessionService parkingSessionService;
     private final EmergencyService emergencyService;
+    private final ParkingPassRepository parkingPassRepository;
 
     // Cập nhật Constructor để Spring tự động tiêm (inject) các Repository vào
     public ManagerService(PaymentRepository paymentRepository,
@@ -43,7 +44,8 @@ public class ManagerService {
             PricingRuleRepository pricingRuleRepository,
             GateRepository gateRepository,
             ParkingSessionService parkingSessionService,
-            EmergencyService emergencyService) {
+            EmergencyService emergencyService,
+            ParkingPassRepository parkingPassRepository) {
         this.paymentRepository = paymentRepository;
         this.parkingSessionRepository = parkingSessionRepository;
         this.zoneRepository = zoneRepository;
@@ -55,6 +57,7 @@ public class ManagerService {
         this.gateRepository = gateRepository;
         this.parkingSessionService = parkingSessionService;
         this.emergencyService = emergencyService;
+        this.parkingPassRepository = parkingPassRepository;
     }
 
     /*
@@ -146,11 +149,12 @@ public class ManagerService {
             end = LocalDate.now().atTime(LocalTime.MAX);
 
         } else {
-
             if (from == null || to == null) {
                 throw new BusinessException("from and to are required");
             }
-
+            if (from.isAfter(to)) {
+                throw new BusinessException("from date must be before or equal to to date");
+            }
             start = from.atStartOfDay();
             end = to.atTime(LocalTime.MAX);
         }
@@ -215,6 +219,8 @@ public class ManagerService {
         } else {
             if (from == null || to == null)
                 throw new BusinessException("from and to are required");
+            if (from.isAfter(to))
+                throw new BusinessException("from date must be before or equal to to date");
             start = from.atStartOfDay();
             end = to.atTime(LocalTime.MAX);
         }
@@ -361,6 +367,16 @@ public class ManagerService {
                         .zoneName(session.getZone() != null ? session.getZone().getZoneName() : null)
                         .entryTime(session.getEntryTime())
                         .exitTime(session.getExitTime());
+            });
+        } else if ("PASS".equalsIgnoreCase(p.getReferenceType()) && p.getReferenceId() != null) {
+            parkingPassRepository.findById(p.getReferenceId()).ifPresent(pass -> {
+                builder
+                        .sessionCode(pass.getParkingPassCode())
+                        .licensePlate(pass.getLicensePlate())
+                        .vehicleTypeName(pass.getVehicleType() != null ? pass.getVehicleType().getName() : null)
+                        .zoneName(pass.getBuilding() != null ? pass.getBuilding().getName() : "Toàn bãi xe")
+                        .entryTime(pass.getStartDate() != null ? pass.getStartDate().atStartOfDay() : null)
+                        .exitTime(pass.getEndDate() != null ? pass.getEndDate().atTime(LocalTime.MAX) : null);
             });
         }
 

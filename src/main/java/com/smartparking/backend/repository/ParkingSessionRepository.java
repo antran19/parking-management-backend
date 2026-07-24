@@ -20,6 +20,9 @@ public interface ParkingSessionRepository extends JpaRepository<ParkingSession, 
 
        boolean existsByZoneId(UUID zoneId);
 
+       /** Dùng để kiểm tra zone có lịch sử gửi xe thực (COMPLETED) không */
+       boolean existsByZoneIdAndStatus(UUID zoneId, SessionStatus status);
+
        @Query("SELECT MAX(s.sessionCode) FROM ParkingSession s WHERE s.sessionCode LIKE :prefix%")
        String findMaxSessionCodeByPrefix(@Param("prefix") String prefix);
 

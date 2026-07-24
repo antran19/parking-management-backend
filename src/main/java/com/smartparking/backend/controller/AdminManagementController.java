@@ -240,28 +240,59 @@ public class AdminManagementController {
         return ResponseEntity.ok(ApiResponse.success("Đã xóa zone", id.toString()));
     }
 
-    /** Chặn xóa zone nếu còn dữ liệu nghiệp vụ thật (xe đang đỗ / lịch sử gửi xe / lịch sử đặt chỗ). */
+    /** Chặn xóa zone nếu còn dữ liệu nghiệp vụ thật (xe đang đỗ / lịch sử gửi xe thực / đặt chỗ đang active). */
     private void assertZoneDeletable(Zone zone) {
+        // 1. Xe đang đỗ trong zone
         if (zone.getCurrentCount() != null && zone.getCurrentCount() > 0) {
             throw new BusinessException(
                     "Zone " + zone.getZoneName() + " đang có " + zone.getCurrentCount() + " xe đỗ, không thể xóa");
         }
-        if (parkingSessionRepository.existsByZoneId(zone.getId())) {
+        // 2. Có lịch sử gửi xe thực (COMPLETED) → bảo toàn dữ liệu báo cáo doanh thu
+        if (parkingSessionRepository.existsByZoneIdAndStatus(zone.getId(), ParkingSession.SessionStatus.COMPLETED)) {
             throw new BusinessException(
                     "Zone " + zone.getZoneName() + " đã có lịch sử gửi xe, không thể xóa để bảo toàn dữ liệu báo cáo — "
                             + "hãy chuyển trạng thái zone sang \"Bảo trì\" thay vì xóa");
         }
-        if (!reservationRepository.findByZoneId(zone.getId()).isEmpty()) {
+        // 3. Có đặt chỗ đang active (PENDING hoặc CONFIRMED) → không thể xóa
+        if (reservationRepository.existsByZoneIdAndStatusIn(zone.getId(),
+                List.of(Reservation.ReservationStatus.PENDING, Reservation.ReservationStatus.CONFIRMED))) {
             throw new BusinessException(
-                    "Zone " + zone.getZoneName() + " đã có lịch sử đặt chỗ, không thể xóa để bảo toàn dữ liệu báo cáo — "
-                            + "hãy chuyển trạng thái zone sang \"Bảo trì\" thay vì xóa");
+                    "Zone " + zone.getZoneName() + " đang có đặt chỗ chưa hoàn tất, không thể xóa — "
+                            + "hãy hủy các đặt chỗ trước hoặc chuyển sang \"Bảo trì\"");
         }
+        // Lưu ý: Đặt chỗ đã HỦY (CANCELLED/EXPIRED) không chặn xóa zone
     }
 
-    /** Xóa zone + các gate phụ thuộc. Không đồng bộ lại Floor.totalSlots — caller tự lo việc đó. */
+    /** Xóa zone + các gate + reservation/session đã hủy phụ thuộc.
+     *  Chỉ gọi sau khi assertZoneDeletable() đã xác nhận không còn dữ liệu active.
+     *  Không đồng bộ lại Floor.totalSlots — caller tự lo việc đó. */
     private void deleteZoneCascade(Zone zone) {
-        gateRepository.deleteAll(gateRepository.findByZoneId(zone.getId()));
-        zoneRepository.deleteById(zone.getId());
+        UUID zoneId = zone.getId();
+
+        // 1. Xóa các reservation đã hủy (CANCELLED/EXPIRED) — FK constraint cần xóa trước zone
+        List<Reservation> cancelledReservations = reservationRepository.findByZoneId(zoneId).stream()
+                .filter(r -> r.getStatus() == Reservation.ReservationStatus.CANCELLED
+                          || r.getStatus() == Reservation.ReservationStatus.EXPIRED)
+                .toList();
+        if (!cancelledReservations.isEmpty()) {
+            reservationRepository.deleteAll(cancelledReservations);
+        }
+
+        // 2. Xóa các parking session đã hủy (CANCELLED) nếu có FK đến zone
+        //    (COMPLETED sessions đã bị chặn bởi assertZoneDeletable, không thể vào đây)
+        List<ParkingSession> cancelledSessions = parkingSessionRepository.findAll().stream()
+                .filter(s -> s.getZone() != null && s.getZone().getId().equals(zoneId))
+                .filter(s -> s.getStatus() == ParkingSession.SessionStatus.CANCELLED)
+                .toList();
+        if (!cancelledSessions.isEmpty()) {
+            parkingSessionRepository.deleteAll(cancelledSessions);
+        }
+
+        // 3. Xóa gates của zone
+        gateRepository.deleteAll(gateRepository.findByZoneId(zoneId));
+
+        // 4. Xóa zone
+        zoneRepository.deleteById(zoneId);
     }
 
     /** Đồng bộ lại Floor.totalSlots = tổng capacity các zone còn lại, tránh số liệu ảo sau khi xóa/sửa zone. */

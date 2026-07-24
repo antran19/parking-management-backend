@@ -30,4 +30,7 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
     List<Reservation> findByLicensePlateInAndStatusIn(List<String> licensePlates, List<ReservationStatus> statuses);
 
     List<Reservation> findByZoneId(UUID zoneId);
+
+    /** Dùng để kiểm tra zone có đặt chỗ đang active không (PENDING/CONFIRMED) */
+    boolean existsByZoneIdAndStatusIn(UUID zoneId, List<ReservationStatus> statuses);
 }

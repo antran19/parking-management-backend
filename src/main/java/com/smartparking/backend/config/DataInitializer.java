@@ -131,34 +131,34 @@ public class DataInitializer implements CommandLineRunner {
         //
         // getOrCreateFloor(building, floorNumber, floorName, mainVehicleType, totalSlots,
         //                  floorArea(m²), maxZones, description)
-        // getOrCreateZone(floor, code, name, vehicleType, capacity, distanceToGate, zoneArea(m²))
+        // getOrCreateZone(floor, code, name, vehicleType, capacity, zoneArea(m²))
         // zoneArea backfill = capacity * vehicleType.slotAreaSqm (Xe đạp 1.5 · Xe máy 2.5 · Ô tô 12.5 · Xe tải 37.5)
 
         Floor b2 = getOrCreateFloor(building, -2, "B2", oTo, 80,
                 2000.0, 3, "Hầm B2 — Ô tô chuyên dụng, hầm sâu nhất, chịu tải tốt");
-        Zone b2a = getOrCreateZone(b2, "A", "Khu A - Ô tô", oTo, 30, 20, 375.0);
-        Zone b2b = getOrCreateZone(b2, "B", "Khu B - Ô tô", oTo, 30, 40, 375.0);
-        Zone b2c = getOrCreateZone(b2, "C", "Khu C - Ô tô", oTo, 20, 55, 250.0);
+        Zone b2a = getOrCreateZone(b2, "A", "Khu A - Ô tô", oTo, 30, 375.0);
+        Zone b2b = getOrCreateZone(b2, "B", "Khu B - Ô tô", oTo, 30, 375.0);
+        Zone b2c = getOrCreateZone(b2, "C", "Khu C - Ô tô", oTo, 20, 250.0);
 
         Floor b1 = getOrCreateFloor(building, -1, "B1", xeTai, 34,
                 2000.0, 3, "Hầm B1 — Xe tải chuyên dụng, gần mặt đất");
-        Zone b1a = getOrCreateZone(b1, "A", "Khu A - Xe tải", xeTai, 12, 15, 450.0);
-        Zone b1b = getOrCreateZone(b1, "B", "Khu B - Xe tải", xeTai, 12, 35, 450.0);
-        Zone b1c = getOrCreateZone(b1, "C", "Khu C - Xe tải", xeTai, 10, 50, 375.0);
+        Zone b1a = getOrCreateZone(b1, "A", "Khu A - Xe tải", xeTai, 12, 450.0);
+        Zone b1b = getOrCreateZone(b1, "B", "Khu B - Xe tải", xeTai, 12, 450.0);
+        Zone b1c = getOrCreateZone(b1, "C", "Khu C - Xe tải", xeTai, 10, 375.0);
 
         Floor t1 = getOrCreateFloor(building, 1, "T1", xeMay, 150,
                 2000.0, 4, "Tầng T1 — Tổng hợp: Xe máy + Xe đạp, lối vào thuận tiện");
-        Zone t1a = getOrCreateZone(t1, "A", "Khu A - Xe máy", xeMay, 50, 15, 125.0);
-        Zone t1b = getOrCreateZone(t1, "B", "Khu B - Xe máy", xeMay, 40, 30, 100.0);
-        Zone t1c = getOrCreateZone(t1, "C", "Khu C - Xe máy", xeMay, 30, 45, 75.0);
-        Zone t1d = getOrCreateZone(t1, "D", "Khu D - Xe đạp", xeDap, 30, 10, 45.0);
+        Zone t1a = getOrCreateZone(t1, "A", "Khu A - Xe máy", xeMay, 50, 125.0);
+        Zone t1b = getOrCreateZone(t1, "B", "Khu B - Xe máy", xeMay, 40, 100.0);
+        Zone t1c = getOrCreateZone(t1, "C", "Khu C - Xe máy", xeMay, 30, 75.0);
+        Zone t1d = getOrCreateZone(t1, "D", "Khu D - Xe đạp", xeDap, 30, 45.0);
 
         Floor t2 = getOrCreateFloor(building, 2, "T2", xeMay, 160,
                 2000.0, 4, "Tầng T2 — Tổng hợp: Xe máy + Xe đạp, tầng trên nhẹ tải");
-        Zone t2a = getOrCreateZone(t2, "A", "Khu A - Xe máy", xeMay, 50, 20, 125.0);
-        Zone t2b = getOrCreateZone(t2, "B", "Khu B - Xe máy", xeMay, 40, 35, 100.0);
-        Zone t2c = getOrCreateZone(t2, "C", "Khu C - Xe máy", xeMay, 40, 50, 100.0);
-        Zone t2d = getOrCreateZone(t2, "D", "Khu D - Xe đạp", xeDap, 30, 12, 45.0);
+        Zone t2a = getOrCreateZone(t2, "A", "Khu A - Xe máy", xeMay, 50, 125.0);
+        Zone t2b = getOrCreateZone(t2, "B", "Khu B - Xe máy", xeMay, 40, 100.0);
+        Zone t2c = getOrCreateZone(t2, "C", "Khu C - Xe máy", xeMay, 40, 100.0);
+        Zone t2d = getOrCreateZone(t2, "D", "Khu D - Xe đạp", xeDap, 30, 45.0);
 
         // === CỔNG VÀO/RA ===
         getOrCreateGate(building, "MAIN-IN", "Cổng chính - Lối vào", Gate.GateType.MAIN_ENTRY);
@@ -315,7 +315,7 @@ public class DataInitializer implements CommandLineRunner {
                         .build()));
     }
 
-    private Zone getOrCreateZone(Floor floor, String zoneCode, String zoneName, VehicleType vehicleType, int capacity, int distanceToGate, double zoneArea) {
+    private Zone getOrCreateZone(Floor floor, String zoneCode, String zoneName, VehicleType vehicleType, int capacity, double zoneArea) {
         List<Zone> zones = zoneRepository.findAllByBuildingId(floor.getBuilding().getId());
         return zones.stream()
                 .filter(z -> z.getFloor() != null && floor.getId().equals(z.getFloor().getId()) && zoneCode.equalsIgnoreCase(z.getZoneCode()))
@@ -337,7 +337,6 @@ public class DataInitializer implements CommandLineRunner {
                         .currentCount(0)
                         .reservedCount(0)
                         .status(Zone.ZoneStatus.ACTIVE)
-                        .distanceToGate(distanceToGate)
                         .build()));
     }
 

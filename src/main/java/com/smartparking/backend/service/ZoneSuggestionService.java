@@ -27,10 +27,30 @@ public class ZoneSuggestionService {
     }
 
     /**
+     * Comparator xếp hạng ưu tiên Zone theo 3 tiêu chí:
+     * 1. % sức chứa lấp đầy (currentCount + reservedCount) / capacity là ít nhất (cân bằng tải).
+     * 2. Tầng gần mặt đất nhất (ưu tiên T1 làm chuẩn, tầng nổi T2, T3... trước tầng hầm B1, B2...).
+     * 3. Sắp xếp theo mã zoneCode (A -> Z).
+     */
+    public static Comparator<Zone> getZonePreferenceComparator() {
+        return Comparator
+                .comparingDouble((Zone zone) -> (zone.getCapacity() != null && zone.getCapacity() > 0)
+                        ? (double) ((zone.getCurrentCount() != null ? zone.getCurrentCount() : 0)
+                                + (zone.getReservedCount() != null ? zone.getReservedCount() : 0)) / zone.getCapacity()
+                        : 1.0)
+                .thenComparingInt(zone -> (zone.getFloor() != null && zone.getFloor().getFloorNumber() != null)
+                        ? Math.abs(zone.getFloor().getFloorNumber() - 1) : Integer.MAX_VALUE)
+                .thenComparingInt(zone -> (zone.getFloor() != null && zone.getFloor().getFloorNumber() != null
+                        && zone.getFloor().getFloorNumber() < 0) ? 1 : 0)
+                .thenComparing(Zone::getZoneCode, Comparator.nullsLast(Comparator.naturalOrder()));
+    }
+
+    /**
      * Gợi ý khu vực đỗ xe (Zone) còn trống tốt nhất cho loại xe chỉ định.
      * Tiêu chí ưu tiên:
-     * 1. Số lượng xe hiện tại + số lượng chỗ đã đặt trước là ít nhất (tránh quá tải).
-     * 2. Khoảng cách từ zone tới cổng (Gate) là ngắn nhất.
+     * 1. Tỷ lệ % sức chứa đã sử dụng (hiện tại + đã đặt trước) / capacity là ít nhất (cân bằng tải).
+     * 2. Tầng gần mặt đất nhất (ưu tiên T1 làm chuẩn, tầng nổi T2, T3... trước tầng hầm B1, B2...).
+     * 3. Sắp xếp theo mã zoneCode (A -> Z) khi các tiêu chí trên bằng nhau.
      */
     @Transactional(readOnly = true)
     public Zone suggestZone(VehicleType vehicleType) {
@@ -43,9 +63,7 @@ public class ZoneSuggestionService {
                                     && Boolean.TRUE.equals(g.getIsActive())
                                     && (g.getGateType() == Gate.GateType.ZONE_ENTRY || g.getGateType() == Gate.GateType.ZONE_BOTH));
                 })
-                .min(Comparator
-                        .comparingInt((Zone zone) -> zone.getCurrentCount() + zone.getReservedCount())
-                        .thenComparing(zone -> zone.getDistanceToGate() != null ? zone.getDistanceToGate() : Integer.MAX_VALUE))
+                .min(getZonePreferenceComparator())
                 .orElseThrow(() -> new BusinessException("Không còn zone phù hợp hoặc tất cả các zone đều đang bảo trì cổng cho loại xe: " + vehicleType.getName()));
     }
 

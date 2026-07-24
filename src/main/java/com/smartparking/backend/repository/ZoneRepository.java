@@ -19,7 +19,7 @@ public interface ZoneRepository extends JpaRepository<Zone, UUID> {
                      "WHERE z.vehicleType.id = :vehicleTypeId " +
                      "AND z.status = :status " +
                      "AND z.currentCount + z.reservedCount < z.capacity " +
-                     "ORDER BY z.distanceToGate ASC")
+                     "ORDER BY f.floorNumber ASC, z.zoneCode ASC")
        List<Zone> findAvailableZonesByVehicleType(@Param("vehicleTypeId") UUID vehicleTypeId,
                      @Param("status") ZoneStatus status);
 

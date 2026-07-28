@@ -25,19 +25,20 @@ import io.swagger.v3.oas.annotations.tags.Tag;
  * AdminManagementController — CRUD quản trị hệ thống (An phụ trách)
  *
  * Chức năng đã implement:
- * - CRUD /admin/users           → Quản lý tài khoản
- * - CRUD /admin/zones           → Quản lý khu đỗ xe
+ * - CRUD /admin/users → Quản lý tài khoản
+ * - CRUD /admin/zones → Quản lý khu đỗ xe
  * - CRUD /admin/gates + barrier → Quản lý cổng + điều khiển barrier
- * - CRUD /admin/pricing-rules   → Quản lý bảng giá
- * - CRUD /admin/parking-passes  → Quản lý vé định kỳ + gia hạn
- * - GET  /admin/payments        → Xem danh sách thanh toán
- * - GET/PUT /admin/settings     → Cài đặt hệ thống
+ * - CRUD /admin/pricing-rules → Quản lý bảng giá
+ * - CRUD /admin/parking-passes → Quản lý vé định kỳ + gia hạn
+ * - GET /admin/payments → Xem danh sách thanh toán
+ * - GET/PUT /admin/settings → Cài đặt hệ thống
  *
  * MỚI (18/07/2026 — theo góp ý giảng viên):
- * - CRUD /admin/buildings       → Quản lý tòa nhà
- * - CRUD /admin/floors          → Quản lý tầng (có thông số vật lý)
+ * - CRUD /admin/buildings → Quản lý tòa nhà
+ * - CRUD /admin/floors → Quản lý tầng (có thông số vật lý)
  * - GET/PUT /admin/vehicle-types → Quản lý loại phương tiện (thông số slot)
- * - POST /admin/calculate-slots → Tính slot tự động: maxSlots = floor(zoneArea / slotAreaSqm)
+ * - POST /admin/calculate-slots → Tính slot tự động: maxSlots = floor(zoneArea
+ * / slotAreaSqm)
  */
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -61,20 +62,20 @@ public class AdminManagementController {
     private final ZonePlanningService zonePlanningService;
 
     public AdminManagementController(UserRepository userRepository,
-                                     ZoneRepository zoneRepository,
-                                     FloorRepository floorRepository,
-                                     VehicleTypeRepository vehicleTypeRepository,
-                                     GateRepository gateRepository,
-                                     BuildingRepository buildingRepository,
-                                     PricingRuleRepository pricingRuleRepository,
-                                     ParkingPassRepository parkingPassRepository,
-                                     PaymentRepository paymentRepository,
-                                     SystemSettingsRepository systemSettingsRepository,
-                                     ParkingSessionRepository parkingSessionRepository,
-                                     ReservationRepository reservationRepository,
-                                     PasswordEncoder passwordEncoder,
-                                     UniqueCodeGeneratorService uniqueCodeGeneratorService,
-                                     ZonePlanningService zonePlanningService) {
+            ZoneRepository zoneRepository,
+            FloorRepository floorRepository,
+            VehicleTypeRepository vehicleTypeRepository,
+            GateRepository gateRepository,
+            BuildingRepository buildingRepository,
+            PricingRuleRepository pricingRuleRepository,
+            ParkingPassRepository parkingPassRepository,
+            PaymentRepository paymentRepository,
+            SystemSettingsRepository systemSettingsRepository,
+            ParkingSessionRepository parkingSessionRepository,
+            ReservationRepository reservationRepository,
+            PasswordEncoder passwordEncoder,
+            UniqueCodeGeneratorService uniqueCodeGeneratorService,
+            ZonePlanningService zonePlanningService) {
         this.userRepository = userRepository;
         this.zoneRepository = zoneRepository;
         this.floorRepository = floorRepository;
@@ -114,7 +115,8 @@ public class AdminManagementController {
         if (userRepository.existsByEmail(email))
             throw new IllegalArgumentException("Email đã tồn tại");
         String phone = textOrDefault(body, "phone", "");
-        if (!phone.isBlank()) validatePhone(phone);
+        if (!phone.isBlank())
+            validatePhone(phone);
 
         String temporaryPassword = textOrDefault(body, "password", generateTemporaryPassword());
         User user = User.builder()
@@ -156,7 +158,8 @@ public class AdminManagementController {
             @PathVariable UUID id, @RequestBody Map<String, Object> body) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại"));
-        if (body.containsKey("name")) user.setFullName(text(body, "name"));
+        if (body.containsKey("name"))
+            user.setFullName(text(body, "name"));
         if (body.containsKey("email")) {
             String email = text(body, "email");
             validateEmail(email);
@@ -167,8 +170,10 @@ public class AdminManagementController {
             validatePhone(phone);
             user.setPhone(phone);
         }
-        if (body.containsKey("role")) user.setRole(User.Role.valueOf(text(body, "role").toUpperCase()));
-        if (body.containsKey("status")) user.setIsActive(!"suspended".equalsIgnoreCase(text(body, "status")));
+        if (body.containsKey("role"))
+            user.setRole(User.Role.valueOf(text(body, "role").toUpperCase()));
+        if (body.containsKey("status"))
+            user.setIsActive(!"suspended".equalsIgnoreCase(text(body, "status")));
         return ResponseEntity.ok(ApiResponse.success(
                 "Đã cập nhật tài khoản", userMap(userRepository.save(user))));
     }
@@ -212,14 +217,19 @@ public class AdminManagementController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Transactional
     @Operation(summary = "Update parking zone")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateZone(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateZone(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         Zone zone = zoneRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Zone không tồn tại"));
-        if (body.containsKey("zoneName")) zone.setZoneName(text(body, "zoneName"));
-        if (body.containsKey("status")) zone.setStatus(Zone.ZoneStatus.valueOf(text(body, "status").toUpperCase()));
+        if (body.containsKey("zoneName"))
+            zone.setZoneName(text(body, "zoneName"));
+        if (body.containsKey("status"))
+            zone.setStatus(Zone.ZoneStatus.valueOf(text(body, "status").toUpperCase()));
         Zone saved = zoneRepository.save(zone);
-        // Capacity đi qua ZonePlanningService để tính lại zoneArea + validate diện tích tầng còn
-        // trống, tránh capacity lệch khỏi diện tích thật mà tab Cấu hình hạ tầng đang theo dõi.
+        // Capacity đi qua ZonePlanningService để tính lại zoneArea + validate diện tích
+        // tầng còn
+        // trống, tránh capacity lệch khỏi diện tích thật mà tab Cấu hình hạ tầng đang
+        // theo dõi.
         if (body.containsKey("capacity")) {
             saved = zonePlanningService.resizeZoneCapacity(id, number(body, "capacity", saved.getCapacity()));
         }
@@ -240,7 +250,10 @@ public class AdminManagementController {
         return ResponseEntity.ok(ApiResponse.success("Đã xóa zone", id.toString()));
     }
 
-    /** Chặn xóa zone nếu còn dữ liệu nghiệp vụ thật (xe đang đỗ / lịch sử gửi xe thực / đặt chỗ đang active). */
+    /**
+     * Chặn xóa zone nếu còn dữ liệu nghiệp vụ thật (xe đang đỗ / lịch sử gửi xe
+     * thực / đặt chỗ đang active).
+     */
     private void assertZoneDeletable(Zone zone) {
         // 1. Xe đang đỗ trong zone
         if (zone.getCurrentCount() != null && zone.getCurrentCount() > 0) {
@@ -263,23 +276,26 @@ public class AdminManagementController {
         // Lưu ý: Đặt chỗ đã HỦY (CANCELLED/EXPIRED) không chặn xóa zone
     }
 
-    /** Xóa zone + các gate + reservation/session đã hủy phụ thuộc.
-     *  Chỉ gọi sau khi assertZoneDeletable() đã xác nhận không còn dữ liệu active.
-     *  Không đồng bộ lại Floor.totalSlots — caller tự lo việc đó. */
+    /**
+     * Xóa zone + các gate + reservation/session đã hủy phụ thuộc.
+     * Chỉ gọi sau khi assertZoneDeletable() đã xác nhận không còn dữ liệu active.
+     * Không đồng bộ lại Floor.totalSlots — caller tự lo việc đó.
+     */
     private void deleteZoneCascade(Zone zone) {
         UUID zoneId = zone.getId();
 
-        // 1. Xóa các reservation đã hủy (CANCELLED/EXPIRED) — FK constraint cần xóa trước zone
+        // 1. Xóa các reservation đã hủy (CANCELLED/EXPIRED) — FK constraint cần xóa
+        // trước zone
         List<Reservation> cancelledReservations = reservationRepository.findByZoneId(zoneId).stream()
                 .filter(r -> r.getStatus() == Reservation.ReservationStatus.CANCELLED
-                          || r.getStatus() == Reservation.ReservationStatus.EXPIRED)
+                        || r.getStatus() == Reservation.ReservationStatus.EXPIRED)
                 .toList();
         if (!cancelledReservations.isEmpty()) {
             reservationRepository.deleteAll(cancelledReservations);
         }
 
         // 2. Xóa các parking session đã hủy (CANCELLED) nếu có FK đến zone
-        //    (COMPLETED sessions đã bị chặn bởi assertZoneDeletable, không thể vào đây)
+        // (COMPLETED sessions đã bị chặn bởi assertZoneDeletable, không thể vào đây)
         List<ParkingSession> cancelledSessions = parkingSessionRepository.findAll().stream()
                 .filter(s -> s.getZone() != null && s.getZone().getId().equals(zoneId))
                 .filter(s -> s.getStatus() == ParkingSession.SessionStatus.CANCELLED)
@@ -295,9 +311,13 @@ public class AdminManagementController {
         zoneRepository.deleteById(zoneId);
     }
 
-    /** Đồng bộ lại Floor.totalSlots = tổng capacity các zone còn lại, tránh số liệu ảo sau khi xóa/sửa zone. */
+    /**
+     * Đồng bộ lại Floor.totalSlots = tổng capacity các zone còn lại, tránh số liệu
+     * ảo sau khi xóa/sửa zone.
+     */
     private void syncFloorTotalSlots(Floor floor) {
-        if (floor == null) return;
+        if (floor == null)
+            return;
         int total = zoneRepository.findAllByFloorId(floor.getId()).stream()
                 .mapToInt(z -> z.getCapacity() != null ? z.getCapacity() : 0).sum();
         floor.setTotalSlots(total);
@@ -335,12 +355,16 @@ public class AdminManagementController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Transactional
     @Operation(summary = "Update gate")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateGate(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateGate(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         Gate gate = gateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Gate không tồn tại"));
-        if (body.containsKey("gateName")) gate.setGateName(text(body, "gateName"));
-        if (body.containsKey("gateType")) gate.setGateType(Gate.GateType.valueOf(text(body, "gateType").toUpperCase()));
-        if (body.containsKey("isActive")) gate.setIsActive(Boolean.parseBoolean(String.valueOf(body.get("isActive"))));
+        if (body.containsKey("gateName"))
+            gate.setGateName(text(body, "gateName"));
+        if (body.containsKey("gateType"))
+            gate.setGateType(Gate.GateType.valueOf(text(body, "gateType").toUpperCase()));
+        if (body.containsKey("isActive"))
+            gate.setIsActive(Boolean.parseBoolean(String.valueOf(body.get("isActive"))));
         if (body.containsKey("zoneId")) {
             if (body.get("zoneId") == null || String.valueOf(body.get("zoneId")).isBlank()) {
                 gate.setZone(null);
@@ -366,7 +390,8 @@ public class AdminManagementController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Transactional
     @Operation(summary = "Control gate barrier (OPEN/CLOSED)")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> controlBarrier(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> controlBarrier(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         Gate gate = gateRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Gate không tồn tại"));
         String state = text(body, "state").toUpperCase();
@@ -374,9 +399,12 @@ public class AdminManagementController {
             throw new IllegalArgumentException("Trạng thái barrier không hợp lệ (OPEN hoặc CLOSED)");
 
         gate.setBarrierState(state);
-        // Cưỡng chế đóng barrier phải thật sự chặn được check-in/check-out qua cổng này, không chỉ đổi
-        // màu hiển thị — tận dụng field isActive đã được ParkingSessionService kiểm tra sẵn ở mọi luồng
-        // check-in/check-out (cổng chính vào/ra, cổng zone vào/ra), tránh phải thêm field mới trùng ý nghĩa.
+        // Cưỡng chế đóng barrier phải thật sự chặn được check-in/check-out qua cổng
+        // này, không chỉ đổi
+        // màu hiển thị — tận dụng field isActive đã được ParkingSessionService kiểm tra
+        // sẵn ở mọi luồng
+        // check-in/check-out (cổng chính vào/ra, cổng zone vào/ra), tránh phải thêm
+        // field mới trùng ý nghĩa.
         gate.setIsActive(state.equals("OPEN"));
         gateRepository.save(gate);
 
@@ -385,7 +413,8 @@ public class AdminManagementController {
         payload.put("gateName", gate.getGateName());
         payload.put("barrierState", state);
         payload.put("gateType", gate.getGateType().name());
-        return ResponseEntity.ok(ApiResponse.success("Đã gửi lệnh " + state + " tới barrier " + gate.getGateName(), payload));
+        return ResponseEntity
+                .ok(ApiResponse.success("Đã gửi lệnh " + state + " tới barrier " + gate.getGateName(), payload));
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -412,7 +441,8 @@ public class AdminManagementController {
         PricingRule rule = PricingRule.builder()
                 .building(building)
                 .vehicleType(vehicleType)
-                .pricingType(PricingRule.PricingType.valueOf(textOrDefault(body, "pricingType", "HOURLY").toUpperCase()))
+                .pricingType(
+                        PricingRule.PricingType.valueOf(textOrDefault(body, "pricingType", "HOURLY").toUpperCase()))
                 .pricePerUnit(decimal(body, "pricePerUnit", BigDecimal.ZERO))
                 .freeMinutes(number(body, "freeMinutes", 0))
                 .build();
@@ -423,13 +453,18 @@ public class AdminManagementController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Transactional
     @Operation(summary = "Update pricing rule")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updatePricingRule(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updatePricingRule(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         PricingRule rule = pricingRuleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Bảng giá không tồn tại"));
-        if (body.containsKey("pricingType")) rule.setPricingType(PricingRule.PricingType.valueOf(text(body, "pricingType").toUpperCase()));
-        if (body.containsKey("pricePerUnit")) rule.setPricePerUnit(decimal(body, "pricePerUnit", rule.getPricePerUnit()));
-        if (body.containsKey("freeMinutes")) rule.setFreeMinutes(number(body, "freeMinutes", rule.getFreeMinutes()));
-        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật bảng giá", pricingMap(pricingRuleRepository.save(rule))));
+        if (body.containsKey("pricingType"))
+            rule.setPricingType(PricingRule.PricingType.valueOf(text(body, "pricingType").toUpperCase()));
+        if (body.containsKey("pricePerUnit"))
+            rule.setPricePerUnit(decimal(body, "pricePerUnit", rule.getPricePerUnit()));
+        if (body.containsKey("freeMinutes"))
+            rule.setFreeMinutes(number(body, "freeMinutes", rule.getFreeMinutes()));
+        return ResponseEntity
+                .ok(ApiResponse.success("Đã cập nhật bảng giá", pricingMap(pricingRuleRepository.save(rule))));
     }
 
     @DeleteMapping("/pricing-rules/{id}")
@@ -481,39 +516,50 @@ public class AdminManagementController {
                 .fee(decimal(body, "fee", BigDecimal.ZERO))
                 .status(ParkingPass.PassStatus.ACTIVE)
                 .build();
-        return ResponseEntity.ok(ApiResponse.success("Đã phát hành vé định kỳ", passMap(parkingPassRepository.save(pass))));
+        return ResponseEntity
+                .ok(ApiResponse.success("Đã phát hành vé định kỳ", passMap(parkingPassRepository.save(pass))));
     }
 
     @PutMapping("/parking-passes/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Transactional
     @Operation(summary = "Update parking pass")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updatePass(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updatePass(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         ParkingPass pass = parkingPassRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Vé định kỳ không tồn tại"));
-        if (body.containsKey("userId")) pass.setUser(userRepository.findById(uuid(body, "userId"))
-                .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại")));
-        if (body.containsKey("buildingId")) pass.setBuilding(buildingRepository.findById(uuid(body, "buildingId"))
-                .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại")));
-        if (body.containsKey("vehicleTypeId")) pass.setVehicleType(vehicleTypeRepository.findById(uuid(body, "vehicleTypeId"))
-                .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại")));
+        if (body.containsKey("userId"))
+            pass.setUser(userRepository.findById(uuid(body, "userId"))
+                    .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại")));
+        if (body.containsKey("buildingId"))
+            pass.setBuilding(buildingRepository.findById(uuid(body, "buildingId"))
+                    .orElseThrow(() -> new ResourceNotFoundException("Building không tồn tại")));
+        if (body.containsKey("vehicleTypeId"))
+            pass.setVehicleType(vehicleTypeRepository.findById(uuid(body, "vehicleTypeId"))
+                    .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại")));
         if (body.containsKey("licensePlate") || body.containsKey("vehicleTypeId")) {
             pass.setLicensePlate(resolvePassLicensePlate(body, pass.getVehicleType(), pass.getLicensePlate()));
         }
         if (body.containsKey("startDate")) {
             LocalDate newStartDate = LocalDate.parse(text(body, "startDate"));
-            // Chỉ chặn khi admin THỰC SỰ đổi sang 1 ngày quá khứ mới — không chặn việc sửa các
+            // Chỉ chặn khi admin THỰC SỰ đổi sang 1 ngày quá khứ mới — không chặn việc sửa
+            // các
             // trường khác (fee, status...) của vé đã có startDate quá khứ hợp lệ từ trước.
             if (!newStartDate.equals(pass.getStartDate()) && newStartDate.isBefore(LocalDate.now())) {
                 throw new BusinessException("Ngày bắt đầu không được ở quá khứ");
             }
             pass.setStartDate(newStartDate);
         }
-        if (body.containsKey("endDate")) pass.setEndDate(LocalDate.parse(text(body, "endDate")));
-        if (body.containsKey("passType")) pass.setPassType(ParkingPass.PassType.valueOf(text(body, "passType").toUpperCase()));
-        if (body.containsKey("fee")) pass.setFee(decimal(body, "fee", pass.getFee()));
-        if (body.containsKey("status")) pass.setStatus(ParkingPass.PassStatus.valueOf(text(body, "status").toUpperCase()));
-        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật vé định kỳ", passMap(parkingPassRepository.save(pass))));
+        if (body.containsKey("endDate"))
+            pass.setEndDate(LocalDate.parse(text(body, "endDate")));
+        if (body.containsKey("passType"))
+            pass.setPassType(ParkingPass.PassType.valueOf(text(body, "passType").toUpperCase()));
+        if (body.containsKey("fee"))
+            pass.setFee(decimal(body, "fee", pass.getFee()));
+        if (body.containsKey("status"))
+            pass.setStatus(ParkingPass.PassStatus.valueOf(text(body, "status").toUpperCase()));
+        return ResponseEntity
+                .ok(ApiResponse.success("Đã cập nhật vé định kỳ", passMap(parkingPassRepository.save(pass))));
     }
 
     @DeleteMapping("/parking-passes/{id}")
@@ -561,7 +607,8 @@ public class AdminManagementController {
         }
         for (Payment p : payments) {
             try {
-                if (p.getStatus() != Payment.PaymentStatus.COMPLETED) continue;
+                if (p.getStatus() != Payment.PaymentStatus.COMPLETED)
+                    continue;
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("id", p.getId());
                 m.put("referenceType", p.getReferenceType());
@@ -596,10 +643,14 @@ public class AdminManagementController {
     @Operation(summary = "Update system settings")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateSettings(@RequestBody Map<String, Object> body) {
         SystemSettings settings = settings();
-        if (body.containsKey("gracePeriod")) settings.setGracePeriodMinutes(number(body, "gracePeriod", settings.getGracePeriodMinutes()));
-        if (body.containsKey("currency")) settings.setCurrency(textOrDefault(body, "currency", settings.getCurrency()));
-        if (body.containsKey("vat")) settings.setVatPercentage(number(body, "vat", settings.getVatPercentage()));
-        if (body.containsKey("sosEnabled")) settings.setSosEnabled(Boolean.parseBoolean(String.valueOf(body.get("sosEnabled"))));
+        if (body.containsKey("gracePeriod"))
+            settings.setGracePeriodMinutes(number(body, "gracePeriod", settings.getGracePeriodMinutes()));
+        if (body.containsKey("currency"))
+            settings.setCurrency(textOrDefault(body, "currency", settings.getCurrency()));
+        if (body.containsKey("vat"))
+            settings.setVatPercentage(number(body, "vat", settings.getVatPercentage()));
+        if (body.containsKey("sosEnabled"))
+            settings.setSosEnabled(Boolean.parseBoolean(String.valueOf(body.get("sosEnabled"))));
         if (body.containsKey("incidentResolverRoles"))
             settings.setIncidentResolverRoles(sanitizeRoles(body.get("incidentResolverRoles")));
         if (body.containsKey("blacklistManagerRoles"))
@@ -642,18 +693,24 @@ public class AdminManagementController {
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     @Operation(summary = "Cập nhật tòa nhà")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateBuilding(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateBuilding(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         Building building = buildingRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Tòa nhà không tồn tại"));
-        if (body.containsKey("name")) building.setName(text(body, "name"));
-        if (body.containsKey("address")) building.setAddress(text(body, "address"));
-        if (body.containsKey("totalFloors")) building.setTotalFloors(number(body, "totalFloors", building.getTotalFloors()));
-        if (body.containsKey("description")) building.setDescription(textOrDefault(body, "description", ""));
+        if (body.containsKey("name"))
+            building.setName(text(body, "name"));
+        if (body.containsKey("address"))
+            building.setAddress(text(body, "address"));
+        if (body.containsKey("totalFloors"))
+            building.setTotalFloors(number(body, "totalFloors", building.getTotalFloors()));
+        if (body.containsKey("description"))
+            building.setDescription(textOrDefault(body, "description", ""));
         if (body.containsKey("operatingHoursStart"))
             building.setOperatingHoursStart(java.time.LocalTime.parse(text(body, "operatingHoursStart")));
         if (body.containsKey("operatingHoursEnd"))
             building.setOperatingHoursEnd(java.time.LocalTime.parse(text(body, "operatingHoursEnd")));
-        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật tòa nhà", buildingMap(buildingRepository.save(building))));
+        return ResponseEntity
+                .ok(ApiResponse.success("Đã cập nhật tòa nhà", buildingMap(buildingRepository.save(building))));
     }
 
     @DeleteMapping("/buildings/{id}")
@@ -714,7 +771,8 @@ public class AdminManagementController {
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     @Operation(summary = "Cập nhật tầng")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateFloor(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateFloor(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         Floor floor = floorRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Tầng không tồn tại"));
         if (body.containsKey("floorName")) {
@@ -722,7 +780,8 @@ public class AdminManagementController {
             validateFloorNumberMatchesName(newFloorName, floor.getFloorNumber());
             floor.setFloorName(newFloorName);
         }
-        if (body.containsKey("totalSlots")) floor.setTotalSlots(number(body, "totalSlots", floor.getTotalSlots()));
+        if (body.containsKey("totalSlots"))
+            floor.setTotalSlots(number(body, "totalSlots", floor.getTotalSlots()));
         if (body.containsKey("floorArea")) {
             double newFloorArea = doubleVal(body, "floorArea", floor.getFloorArea());
             if (newFloorArea <= 0) {
@@ -738,8 +797,10 @@ public class AdminManagementController {
             }
             floor.setFloorArea(newFloorArea);
         }
-        if (body.containsKey("maxZones")) floor.setMaxZones(number(body, "maxZones", floor.getMaxZones()));
-        if (body.containsKey("description")) floor.setDescription(textOrDefault(body, "description", ""));
+        if (body.containsKey("maxZones"))
+            floor.setMaxZones(number(body, "maxZones", floor.getMaxZones()));
+        if (body.containsKey("description"))
+            floor.setDescription(textOrDefault(body, "description", ""));
         if (body.containsKey("vehicleTypeId"))
             floor.setVehicleType(vehicleTypeRepository.findById(uuid(body, "vehicleTypeId"))
                     .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại")));
@@ -791,7 +852,8 @@ public class AdminManagementController {
             @PathVariable UUID id, @RequestBody Map<String, Object> body) {
         List<Map<String, Object>> allocations = (List<Map<String, Object>>) body.getOrDefault("allocations", List.of());
         List<Zone> created = zonePlanningService.generateZones(id, allocations);
-        Floor floor = floorRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Tầng không tồn tại"));
+        Floor floor = floorRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Tầng không tồn tại"));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("zones", created.stream().map(this::zoneMap).toList());
@@ -835,15 +897,22 @@ public class AdminManagementController {
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
     @Operation(summary = "Cập nhật thông số loại phương tiện")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> updateVehicleType(@PathVariable UUID id, @RequestBody Map<String, Object> body) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> updateVehicleType(@PathVariable UUID id,
+            @RequestBody Map<String, Object> body) {
         VehicleType vt = vehicleTypeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại"));
-        if (body.containsKey("name")) vt.setName(text(body, "name"));
-        if (body.containsKey("description")) vt.setDescription(textOrDefault(body, "description", ""));
-        if (body.containsKey("slotAreaSqm")) vt.setSlotAreaSqm(doubleVal(body, "slotAreaSqm", vt.getSlotAreaSqm()));
-        if (body.containsKey("maxWeight")) vt.setMaxWeight(doubleVal(body, "maxWeight", vt.getMaxWeight()));
-        if (body.containsKey("mixable")) vt.setMixable(boolVal(body, "mixable", vt.getMixable()));
-        return ResponseEntity.ok(ApiResponse.success("Đã cập nhật loại xe", vehicleTypeMap(vehicleTypeRepository.save(vt))));
+        if (body.containsKey("name"))
+            vt.setName(text(body, "name"));
+        if (body.containsKey("description"))
+            vt.setDescription(textOrDefault(body, "description", ""));
+        if (body.containsKey("slotAreaSqm"))
+            vt.setSlotAreaSqm(doubleVal(body, "slotAreaSqm", vt.getSlotAreaSqm()));
+        if (body.containsKey("maxWeight"))
+            vt.setMaxWeight(doubleVal(body, "maxWeight", vt.getMaxWeight()));
+        if (body.containsKey("mixable"))
+            vt.setMixable(boolVal(body, "mixable", vt.getMixable()));
+        return ResponseEntity
+                .ok(ApiResponse.success("Đã cập nhật loại xe", vehicleTypeMap(vehicleTypeRepository.save(vt))));
     }
 
     @DeleteMapping("/vehicle-types/{id}")
@@ -854,7 +923,8 @@ public class AdminManagementController {
         VehicleType vt = vehicleTypeRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Loại xe không tồn tại"));
         if (zoneRepository.existsByVehicleTypeId(id)) {
-            throw new BusinessException("Loại xe \"" + vt.getName() + "\" đang được dùng ở ít nhất 1 khu vực đỗ, không thể xóa");
+            throw new BusinessException(
+                    "Loại xe \"" + vt.getName() + "\" đang được dùng ở ít nhất 1 khu vực đỗ, không thể xóa");
         }
         try {
             vehicleTypeRepository.deleteById(id);
@@ -946,10 +1016,9 @@ public class AdminManagementController {
         return map;
     }
 
-    private static final java.util.regex.Pattern EMAIL_PATTERN =
-            java.util.regex.Pattern.compile("^[\\w.+-]+@[\\w-]+\\.[a-zA-Z]{2,}$");
-    private static final java.util.regex.Pattern PHONE_PATTERN =
-            java.util.regex.Pattern.compile("^(0|\\+84)\\d{9}$");
+    private static final java.util.regex.Pattern EMAIL_PATTERN = java.util.regex.Pattern
+            .compile("^[\\w.+-]+@[\\w-]+\\.[a-zA-Z]{2,}$");
+    private static final java.util.regex.Pattern PHONE_PATTERN = java.util.regex.Pattern.compile("^(0|\\+84)\\d{9}$");
 
     private void validateEmail(String email) {
         if (!EMAIL_PATTERN.matcher(email).matches()) {
@@ -1007,10 +1076,16 @@ public class AdminManagementController {
         return map;
     }
 
-    /** Xác định licensePlate cuối cùng cho 1 vé định kỳ: xe đạp luôn dùng mã BC... tự sinh (bỏ qua
-     *  input tay của admin, giữ nguyên nếu đã có mã hợp lệ để tránh sinh lại vô cớ mỗi lần sửa),
-     *  các loại xe khác phải qua LicensePlateUtil validate đúng định dạng + khớp loại xe — cùng
-     *  1 hàm validate mà DriverController đang dùng để chặn tài xế tự đăng ký sai định dạng. */
+    /**
+     * Xác định licensePlate cuối cùng cho 1 vé định kỳ: xe đạp luôn dùng mã BC...
+     * tự sinh (bỏ qua
+     * input tay của admin, giữ nguyên nếu đã có mã hợp lệ để tránh sinh lại vô cớ
+     * mỗi lần sửa),
+     * các loại xe khác phải qua LicensePlateUtil validate đúng định dạng + khớp
+     * loại xe — cùng
+     * 1 hàm validate mà DriverController đang dùng để chặn tài xế tự đăng ký sai
+     * định dạng.
+     */
     private String resolvePassLicensePlate(Map<String, Object> body, VehicleType vehicleType, String existingPlate) {
         boolean isBicycle = "BICYCLE".equals(LicensePlateUtil.getVehicleTypeKey(vehicleType.getName()));
         if (isBicycle) {
@@ -1064,19 +1139,24 @@ public class AdminManagementController {
         return map;
     }
 
-    /** Các role admin được phép bật/tắt (ADMIN luôn có quyền nên không nằm ở đây).
-     *  STAFF không có màn UI cho giải quyết sự cố / blacklist nên không đưa vào. */
-    private static final java.util.Set<String> TOGGLEABLE_ROLES =
-            java.util.Set.of("SECURITY", "MANAGER");
+    /**
+     * Các role admin được phép bật/tắt (ADMIN luôn có quyền nên không nằm ở đây).
+     * STAFF không có màn UI cho giải quyết sự cố / blacklist nên không đưa vào.
+     */
+    private static final java.util.Set<String> TOGGLEABLE_ROLES = java.util.Set.of("SECURITY", "MANAGER");
 
     private java.util.List<String> toRoleList(String csv) {
-        if (csv == null || csv.isBlank()) return java.util.List.of();
+        if (csv == null || csv.isBlank())
+            return java.util.List.of();
         return java.util.Arrays.stream(csv.split(","))
                 .map(String::trim).filter(s -> !s.isEmpty())
                 .collect(java.util.stream.Collectors.toList());
     }
 
-    /** Nhận List hoặc CSV, giữ lại chỉ role hợp lệ (STAFF/SECURITY/MANAGER), trả về CSV. */
+    /**
+     * Nhận List hoặc CSV, giữ lại chỉ role hợp lệ (STAFF/SECURITY/MANAGER), trả về
+     * CSV.
+     */
     private String sanitizeRoles(Object value) {
         java.util.stream.Stream<String> stream;
         if (value instanceof java.util.List<?> list) {
@@ -1109,7 +1189,8 @@ public class AdminManagementController {
      * không ép buộc — tránh 1 lỗi âm thầm như "B5" nhưng gõ floorNumber dương/sai.
      */
     private void validateFloorNumberMatchesName(String floorName, int floorNumber) {
-        if (floorName == null) return;
+        if (floorName == null)
+            return;
         String name = floorName.trim();
         java.util.regex.Matcher basement = java.util.regex.Pattern.compile("^[Bb](\\d+)$").matcher(name);
         if (basement.matches()) {

@@ -528,6 +528,9 @@ public class AdminManagementController {
             @RequestBody Map<String, Object> body) {
         ParkingPass pass = parkingPassRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Vé định kỳ không tồn tại"));
+        // Trạng thái GỐC trước khi sửa — dùng để chặn thao tác nhạy cảm trên vé đang hoạt động
+        // (đã thanh toán / còn hạn). Đọc 1 lần ở đây vì status có thể bị đổi ở dưới.
+        ParkingPass.PassStatus originalStatus = pass.getStatus();
         if (body.containsKey("userId"))
             pass.setUser(userRepository.findById(uuid(body, "userId"))
                     .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại")));
@@ -550,12 +553,29 @@ public class AdminManagementController {
             }
             pass.setStartDate(newStartDate);
         }
-        if (body.containsKey("endDate"))
-            pass.setEndDate(LocalDate.parse(text(body, "endDate")));
+        if (body.containsKey("endDate")) {
+            LocalDate newEndDate = LocalDate.parse(text(body, "endDate"));
+            // Vé đang hoạt động: không cho RÚT NGẮN hạn (driver đã trả tiền theo hạn cũ).
+            // Muốn kéo dài thì dùng chức năng Gia hạn (renewPass). Vẫn cho phép kéo dài ở đây.
+            if (originalStatus == ParkingPass.PassStatus.ACTIVE
+                    && pass.getEndDate() != null && newEndDate.isBefore(pass.getEndDate())) {
+                throw new BusinessException(
+                        "Không thể rút ngắn hạn của vé đang hoạt động. Dùng chức năng Gia hạn để kéo dài hạn.");
+            }
+            pass.setEndDate(newEndDate);
+        }
         if (body.containsKey("passType"))
             pass.setPassType(ParkingPass.PassType.valueOf(text(body, "passType").toUpperCase()));
-        if (body.containsKey("fee"))
-            pass.setFee(decimal(body, "fee", pass.getFee()));
+        if (body.containsKey("fee")) {
+            BigDecimal newFee = decimal(body, "fee", pass.getFee());
+            // Vé đang hoạt động = đã thanh toán: không cho đổi giá (tránh lệch với Payment đã ghi).
+            if (originalStatus == ParkingPass.PassStatus.ACTIVE
+                    && pass.getFee() != null && newFee.compareTo(pass.getFee()) != 0) {
+                throw new BusinessException(
+                        "Không thể đổi giá vé đang hoạt động (đã thanh toán). Chỉ được gia hạn.");
+            }
+            pass.setFee(newFee);
+        }
         if (body.containsKey("status"))
             pass.setStatus(ParkingPass.PassStatus.valueOf(text(body, "status").toUpperCase()));
         return ResponseEntity
@@ -567,6 +587,16 @@ public class AdminManagementController {
     @Transactional
     @Operation(summary = "Delete parking pass")
     public ResponseEntity<ApiResponse<String>> deletePass(@PathVariable UUID id) {
+        ParkingPass pass = parkingPassRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Vé định kỳ không tồn tại"));
+        // Vé đang hoạt động (đã thanh toán / còn hạn): KHÔNG xóa vật lý để giữ nguyên
+        // các bản ghi Payment liên quan + phục vụ audit. Chuyển sang CANCELLED (soft-delete).
+        if (pass.getStatus() == ParkingPass.PassStatus.ACTIVE) {
+            pass.setStatus(ParkingPass.PassStatus.CANCELLED);
+            parkingPassRepository.save(pass);
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Đã hủy vé định kỳ (vé đang hoạt động nên được hủy thay vì xóa vĩnh viễn)", id.toString()));
+        }
         parkingPassRepository.deleteById(id);
         return ResponseEntity.ok(ApiResponse.success("Đã xóa vé định kỳ", id.toString()));
     }

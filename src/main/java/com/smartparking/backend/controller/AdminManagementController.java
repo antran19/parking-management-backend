@@ -1132,7 +1132,11 @@ public class AdminManagementController {
         if (error != null) {
             throw new BusinessException(error);
         }
-        return plate;
+        // Chuẩn hóa biển số (bỏ dấu gạch/chấm) trước khi lưu để KHỚP với biển đã normalize
+        // lúc check-in (ParkingSessionService dùng findByLicensePlateAndBuildingAndStatus so
+        // khớp chính xác chuỗi). Nếu lưu "93E1-14468" mà check-in tra "93E114468" thì vé tháng
+        // sẽ không được nhận diện và xe bị tính vé lượt.
+        return LicensePlateUtil.normalize(plate);
     }
 
     private Map<String, Object> passMap(ParkingPass pass) {

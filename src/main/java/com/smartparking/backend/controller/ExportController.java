@@ -41,29 +41,29 @@ public class ExportController {
         switch (type.toLowerCase()) {
             case "payments":
                 List<PaymentDetailResponse> payments = managerService.getPayments();
-                String[] pHeaders = {"Mã Giao Dịch", "Biển Số", "Loại Xe", "Số Tiền", "Phương Thức", "Trạng Thái", "Giờ Vào", "Giờ Ra"};
-                String[] pFields = {"transactionId", "licensePlate", "vehicleTypeName", "amount", "paymentMethod", "status", "entryTime", "exitTime"};
+                String[] pHeaders = {"Mã Giao Dịch", "Mã Phiên / Mã Vé", "Biển Số", "Loại Xe", "Khu Vực / Tòa Nhà", "Số Tiền (VNĐ)", "Phương Thức", "Trạng Thái", "Thời Gian TT", "Giờ Vào", "Giờ Ra"};
+                String[] pFields = {"transactionId", "sessionCode", "licensePlate", "vehicleTypeName", "zoneName", "amount", "paymentMethod", "status", "paidAt", "entryTime", "exitTime"};
                 excelData = excelExportService.exportToExcel(payments, pHeaders, pFields);
                 filename = "GiaoDichThanhToan.xlsx";
                 break;
             case "incidents":
                 List<ExceptionLogResponse> incidents = managerService.getSecurityIncidents(null, null);
-                String[] iHeaders = {"Biển Số", "Loại Sự Cố", "Mô Tả", "Người Xử Lý", "Thời Gian Tạo", "Thời Gian Giải Quyết", "Phương Án Giải Quyết"};
-                String[] iFields = {"licensePlate", "exceptionType", "description", "handledBy", "createdAt", "resolvedAt", "resolution"};
+                String[] iHeaders = {"Mã ID", "Biển Số", "Loại Xe", "Loại Sự Cố", "Mô Tả", "Trạng Thái", "Người Xử Lý", "Phương Án Giải Quyết", "Thời Gian Tạo", "Thời Gian Giải Quyết"};
+                String[] iFields = {"id", "licensePlate", "vehicleType", "exceptionType", "description", "status", "handledBy", "resolution", "createdAt", "resolvedAt"};
                 excelData = excelExportService.exportToExcel(incidents, iHeaders, iFields);
                 filename = "SuCoAnNinh.xlsx";
                 break;
             case "blacklist":
                 List<BlacklistPlateResponse> blacklist = blacklistService.getAllBlacklist();
-                String[] bHeaders = {"Biển Số", "Lý Do", "Ngày Thêm", "Người Thêm", "Trạng Thái"};
-                String[] bFields = {"licensePlate", "reason", "addedAt", "addedBy", "isActive"};
+                String[] bHeaders = {"Mã ID", "Biển Số", "Loại Xe", "Lý Do", "Mô Tả", "Trạng Thái", "Người Thêm", "Ngày Thêm", "Người Gỡ", "Ngày Gỡ"};
+                String[] bFields = {"id", "licensePlate", "vehicleType", "reason", "description", "isActive", "addedBy", "addedAt", "removedBy", "removedAt"};
                 excelData = excelExportService.exportToExcel(blacklist, bHeaders, bFields);
                 filename = "BienSoDen.xlsx";
                 break;
             case "sessions":
                 List<com.smartparking.backend.dto.response.SessionResponse> sessions = parkingSessionService.getAllSessions();
-                String[] sHeaders = {"Mã Phiên", "Biển Số", "Loại Xe", "Trạng Thái", "Giờ Vào", "Giờ Ra", "Tổng Phí"};
-                String[] sFields = {"id", "licensePlate", "vehicleTypeName", "status", "entryTime", "exitTime", "totalFee"};
+                String[] sHeaders = {"Mã Phiên", "Biển Số", "Loại Xe", "Khu Vực", "Tòa Nhà", "Trạng Thái", "Loại Khách", "Trạng Thái TT", "Giờ Vào", "Giờ Ra", "Tổng Phí (VNĐ)"};
+                String[] sFields = {"sessionCode", "licensePlate", "vehicleType", "zoneName", "buildingName", "status", "driverType", "paymentStatus", "entryTime", "exitTime", "totalFee"};
                 excelData = excelExportService.exportToExcel(sessions, sHeaders, sFields);
                 filename = "LuotGuiXe.xlsx";
                 break;

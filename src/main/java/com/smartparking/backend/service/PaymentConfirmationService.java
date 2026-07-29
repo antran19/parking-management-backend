@@ -19,13 +19,14 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * PaymentConfirmationService — Xử lý xác nhận thanh toán chuyển khoản real-time.
+ * PaymentConfirmationService — Xử lý xác nhận thanh toán chuyển khoản
+ * real-time.
  *
  * Khi Driver xác nhận đã chuyển khoản:
- *   1. Tìm session ACTIVE
- *   2. Tính phí + tạo Payment record
- *   3. Đóng session (COMPLETED)
- *   4. Broadcast qua WebSocket → Staff nhận real-time
+ * 1. Tìm session ACTIVE
+ * 2. Tính phí + tạo Payment record
+ * 3. Đóng session (COMPLETED)
+ * 4. Broadcast qua WebSocket → Staff nhận real-time
  */
 @Service
 public class PaymentConfirmationService {
@@ -45,8 +46,7 @@ public class PaymentConfirmationService {
             PaymentRepository paymentRepository,
             PricingService pricingService,
             ZoneSuggestionService zoneSuggestionService,
-            SimpMessagingTemplate messagingTemplate
-    ) {
+            SimpMessagingTemplate messagingTemplate) {
         this.sessionRepository = sessionRepository;
         this.gateRepository = gateRepository;
         this.paymentRepository = paymentRepository;
@@ -66,15 +66,13 @@ public class PaymentConfirmationService {
                             "Không tìm thấy phiên gửi xe đang hoạt động với mã: " + sessionCode));
         } else if (licensePlate != null && !licensePlate.isBlank()) {
             String normalizedInput = licensePlate.replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-            session = sessionRepository.findAll().stream()
-                    .filter(s -> s.getStatus() == SessionStatus.ACTIVE)
-                    .filter(s -> {
-                        String normPlate = s.getLicensePlate().replaceAll("[^a-zA-Z0-9]", "").toUpperCase();
-                        return normPlate.equals(normalizedInput);
-                    })
-                    .findFirst()
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Không tìm thấy phiên gửi xe đang hoạt động với biển số: " + licensePlate));
+            java.util.List<ParkingSession> activeSessions = sessionRepository.findActiveSessionsByPlate(
+                    SessionStatus.ACTIVE, licensePlate, normalizedInput);
+            if (activeSessions.isEmpty()) {
+                throw new ResourceNotFoundException(
+                        "Không tìm thấy phiên gửi xe đang hoạt động với biển số: " + licensePlate);
+            }
+            session = activeSessions.get(0);
         } else {
             throw new BusinessException("Phải cung cấp sessionCode hoặc licensePlate");
         }
@@ -82,7 +80,8 @@ public class PaymentConfirmationService {
         // Bước 2: Tính thời gian và phí
         LocalDateTime exitTime = LocalDateTime.now();
         int durationMinutes = (int) ChronoUnit.MINUTES.between(session.getEntryTime(), exitTime);
-        if (durationMinutes < 1) durationMinutes = 1;
+        if (durationMinutes < 1)
+            durationMinutes = 1;
 
         UUID buildingId = session.getZone().getFloor().getBuilding().getId();
         UUID vehicleTypeId = session.getVehicleType().getId();
@@ -158,8 +157,7 @@ public class PaymentConfirmationService {
                 "vehicleType", session.getVehicleType().getName(),
                 "paymentMethod", "VIETQR",
                 "paidAt", LocalDateTime.now().toString(),
-                "exitGate", exitGate != null ? exitGate.getGateName() : "Cổng chính"
-        );
+                "exitGate", exitGate != null ? exitGate.getGateName() : "Cổng chính");
 
         // Broadcast tới topic chung cho tất cả Staff đang mở trang Check-out
         messagingTemplate.convertAndSend("/topic/payments/confirmed", paymentNotification);

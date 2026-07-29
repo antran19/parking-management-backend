@@ -200,7 +200,7 @@ class SecurityExceptionServiceTest {
                 .endDate(java.time.LocalDate.now().plusDays(10))
                 .build();
 
-        when(parkingPassRepository.findAll())
+        when(parkingPassRepository.findByLicensePlateAndStatus("51B12345", ParkingPass.PassStatus.ACTIVE))
                 .thenReturn(List.of(mockPass));
 
         Map<String, Object> result = securityExceptionService.checkPlateForException(plate);

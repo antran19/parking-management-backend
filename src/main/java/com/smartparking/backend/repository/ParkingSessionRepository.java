@@ -84,4 +84,8 @@ public interface ParkingSessionRepository extends JpaRepository<ParkingSession, 
                      "GROUP BY TO_CHAR(entry_time, 'MM/YYYY') ORDER BY MIN(entry_time) ASC", nativeQuery = true)
        List<com.smartparking.backend.repository.projection.ChartDataProjection> countVisitsGroupedByMonth(
                      @Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
+       @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+       @Query("SELECT s FROM ParkingSession s WHERE s.id = :id")
+       java.util.Optional<ParkingSession> findByIdForUpdate(@Param("id") java.util.UUID id);
 }

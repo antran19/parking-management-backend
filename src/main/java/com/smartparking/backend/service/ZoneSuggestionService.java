@@ -73,15 +73,21 @@ public class ZoneSuggestionService {
      */
     @Transactional
     public Zone enterZone(Zone zone) {
-        int occupied = zone.getCurrentCount() + zone.getReservedCount();
-        if (zone.getStatus() != ZoneStatus.ACTIVE || occupied >= zone.getCapacity()) {
-            throw new BusinessException("Zone " + zone.getZoneName() + " đã đầy hoặc không hoạt động");
+        Zone lockedZone = zoneRepository.findByIdForUpdate(zone.getId())
+                .orElseThrow(() -> new com.smartparking.backend.exception.ResourceNotFoundException("Phân khu không tồn tại"));
+        int occupied = lockedZone.getCurrentCount() + lockedZone.getReservedCount();
+        if (lockedZone.getStatus() != ZoneStatus.LOCKED && lockedZone.getStatus() != ZoneStatus.ACTIVE && lockedZone.getStatus() != ZoneStatus.FULL) {
+            // Zone đang bảo trì
+            throw new BusinessException("Zone " + lockedZone.getZoneName() + " đang không hoạt động (Trạng thái: " + lockedZone.getStatus() + ")");
         }
-        zone.setCurrentCount(zone.getCurrentCount() + 1);
-        if (zone.getCurrentCount() + zone.getReservedCount() >= zone.getCapacity()) {
-            zone.setStatus(ZoneStatus.FULL);
+        if (occupied >= lockedZone.getCapacity()) {
+            throw new BusinessException("Zone " + lockedZone.getZoneName() + " đã đầy");
         }
-        return zoneRepository.save(zone);
+        lockedZone.setCurrentCount(lockedZone.getCurrentCount() + 1);
+        if (lockedZone.getCurrentCount() + lockedZone.getReservedCount() >= lockedZone.getCapacity()) {
+            lockedZone.setStatus(ZoneStatus.FULL);
+        }
+        return zoneRepository.save(lockedZone);
     }
 
     /**
@@ -90,13 +96,15 @@ public class ZoneSuggestionService {
      */
     @Transactional
     public Zone exitZone(Zone zone) {
-        if (zone.getCurrentCount() > 0) {
-            zone.setCurrentCount(zone.getCurrentCount() - 1);
+        Zone lockedZone = zoneRepository.findByIdForUpdate(zone.getId())
+                .orElseThrow(() -> new com.smartparking.backend.exception.ResourceNotFoundException("Phân khu không tồn tại"));
+        if (lockedZone.getCurrentCount() > 0) {
+            lockedZone.setCurrentCount(lockedZone.getCurrentCount() - 1);
         }
-        if (zone.getStatus() == ZoneStatus.FULL && zone.getCurrentCount() + zone.getReservedCount() < zone.getCapacity()) {
-            zone.setStatus(ZoneStatus.ACTIVE);
+        if (lockedZone.getStatus() == ZoneStatus.FULL && lockedZone.getCurrentCount() + lockedZone.getReservedCount() < lockedZone.getCapacity()) {
+            lockedZone.setStatus(ZoneStatus.ACTIVE);
         }
-        return zoneRepository.save(zone);
+        return zoneRepository.save(lockedZone);
     }
 }
 

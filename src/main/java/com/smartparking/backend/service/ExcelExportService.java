@@ -37,6 +37,9 @@ public class ExcelExportService {
 
             // Data Rows
             int rowIdx = 1;
+            java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
+            java.time.format.DateTimeFormatter df = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
             for (T item : data) {
                 Row row = sheet.createRow(rowIdx++);
                 for (int i = 0; i < fields.length; i++) {
@@ -46,12 +49,16 @@ public class ExcelExportService {
                         if (value instanceof Number) {
                             cell.setCellValue(((Number) value).doubleValue());
                         } else if (value instanceof Boolean) {
-                            cell.setCellValue((Boolean) value ? "Có" : "Không");
+                            cell.setCellValue((Boolean) value ? "Có / Hoạt động" : "Không / Đã khóa");
+                        } else if (value instanceof java.time.LocalDateTime) {
+                            cell.setCellValue(((java.time.LocalDateTime) value).format(dtf));
+                        } else if (value instanceof java.time.LocalDate) {
+                            cell.setCellValue(((java.time.LocalDate) value).format(df));
                         } else {
                             cell.setCellValue(value.toString());
                         }
                     } else {
-                        cell.setCellValue("");
+                        cell.setCellValue("—");
                     }
                 }
             }

@@ -393,7 +393,7 @@ public class ParkingSessionService {
 
         // Bước 4: Xử lý gán Zone đỗ xe
         if (request.getZoneId() != null) {
-            assignedZone = zoneRepository.findById(request.getZoneId())
+            assignedZone = zoneRepository.findByIdForUpdate(request.getZoneId())
                     .orElseThrow(() -> new ResourceNotFoundException("Phân khu được chọn không tồn tại"));
             
             // Kiểm tra trạng thái hoạt động của Zone được chọn thủ công
@@ -408,9 +408,12 @@ public class ParkingSessionService {
                 throw new BusinessException("Phân khu " + assignedZone.getZoneName() + " đã đầy hoặc không còn chỗ trống.");
             }
         } else if (reservation != null) {
-            assignedZone = reservation.getZone();
+            assignedZone = zoneRepository.findByIdForUpdate(reservation.getZone().getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Phân khu đã đặt chỗ không tồn tại"));
         } else {
-            assignedZone = zoneSuggestionService.suggestZone(vehicleType);
+            Zone suggested = zoneSuggestionService.suggestZone(vehicleType);
+            assignedZone = zoneRepository.findByIdForUpdate(suggested.getId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Phân khu gợi ý không tồn tại"));
         }
 
         // Xác định phân loại Driver
@@ -477,7 +480,8 @@ public class ParkingSessionService {
                     }
                 } else {
                     // Khác zone đã đặt: Giải phóng reservedCount ở Zone đặt trước ban đầu
-                    Zone originalReservedZone = reservation.getZone();
+                    Zone originalReservedZone = zoneRepository.findByIdForUpdate(reservation.getZone().getId())
+                            .orElse(reservation.getZone());
                     if (originalReservedZone.getReservedCount() > 0) {
                         originalReservedZone.setReservedCount(originalReservedZone.getReservedCount() - 1);
                         
@@ -580,6 +584,8 @@ public class ParkingSessionService {
     public SessionResponse checkInZone(CheckInZoneRequest request) {
         // 1. Tìm phiên gửi xe đang hoạt động
         ParkingSession session = findActiveSessionForZoneEntry(request.getSessionCode());
+        session = sessionRepository.findByIdForUpdate(session.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Phiên gửi xe không tồn tại"));
 
         // 2. Kiểm tra nếu xe đã chính thức check-in vào zone rồi
         if (session.getZoneEntryTime() != null) {
@@ -597,12 +603,13 @@ public class ParkingSessionService {
             throw new BusinessException("Cổng " + zoneGate.getGateName() + " không phải là cổng vào Zone.");
         }
 
-        Zone targetZone = zoneGate.getZone();
-        if (targetZone == null) {
+        if (zoneGate.getZone() == null) {
             throw new BusinessException(
                     "Cổng phụ " + zoneGate.getGateName() + " chưa được liên kết với Zone đỗ xe cụ thể.");
         }
-
+        Zone targetZone = zoneRepository.findByIdForUpdate(zoneGate.getZone().getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cổng phụ chưa được liên kết với Zone hợp lệ."));
+        
         // 4. Kiểm tra loại xe có khớp với Zone không
         if (!targetZone.getVehicleType().getId().equals(session.getVehicleType().getId())) {
             throw new BusinessException("Sai làn! Cổng này dành cho " + targetZone.getVehicleType().getName()
@@ -641,6 +648,8 @@ public class ParkingSessionService {
     public SessionResponse checkOutZone(CheckOutZoneRequest request) {
         // 1. Tìm phiên gửi xe đang hoạt động
         ParkingSession session = findActiveSessionForZoneEntry(request.getSessionCode());
+        session = sessionRepository.findByIdForUpdate(session.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Phiên gửi xe không tồn tại"));
 
         // 2. Kiểm tra nếu xe chưa check-in vào zone nào
         if (session.getZoneEntryTime() == null) {
@@ -769,7 +778,9 @@ public class ParkingSessionService {
 
         // Bước 4: Cập nhật thông tin phiên gửi và đối soát biển số
         session.setExitTime(exitTime);
-        session.setZoneExitTime(exitTime);
+        if (session.getZoneExitTime() == null) {
+            session.setZoneExitTime(exitTime);
+        }
         session.setExitMainGate(exitGate);
         session.setDurationMinutes(durationMinutes);
         session.setTotalFee(totalFee);
@@ -1015,7 +1026,7 @@ public class ParkingSessionService {
      */
     @Transactional
     public SessionResponse completeOnlineCheckoutPayment(Payment payment) {
-        ParkingSession session = sessionRepository.findById(payment.getReferenceId())
+        ParkingSession session = sessionRepository.findByIdForUpdate(payment.getReferenceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy phiên gửi xe cho đơn thanh toán"));
 
         if (session.getStatus() == SessionStatus.COMPLETED) {
@@ -1031,7 +1042,9 @@ public class ParkingSessionService {
         Gate exitGate = findDefaultExitGate();
 
         session.setExitTime(exitTime);
-        session.setZoneExitTime(exitTime);
+        if (session.getZoneExitTime() == null) {
+            session.setZoneExitTime(exitTime);
+        }
         if (exitGate != null) {
             session.setExitMainGate(exitGate);
         }

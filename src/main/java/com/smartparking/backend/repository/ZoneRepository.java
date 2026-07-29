@@ -41,4 +41,8 @@ public interface ZoneRepository extends JpaRepository<Zone, UUID> {
               "AND z.status IN :statuses")
        List<Zone> findByVehicleTypeIdAndStatusIn(@Param("vehicleTypeId") UUID vehicleTypeId,
                      @Param("statuses") List<ZoneStatus> statuses);
+
+       @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+       @Query("SELECT z FROM Zone z WHERE z.id = :id")
+       java.util.Optional<Zone> findByIdForUpdate(@Param("id") java.util.UUID id);
 }

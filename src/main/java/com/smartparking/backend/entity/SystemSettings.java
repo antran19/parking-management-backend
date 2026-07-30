@@ -29,13 +29,17 @@ public class SystemSettings {
     @Builder.Default
     private Integer vatPercentage = 10;
 
-    @Column(name = "system_name", length = 100)
-    @Builder.Default
-    private String systemName = "Bãi xe Thông minh SmartParking v2";
-
     @Column(name = "sos_enabled")
     @Builder.Default
     private Boolean sosEnabled = true;
+
+    @Column(name = "incident_resolver_roles", length = 100)
+    @Builder.Default
+    private String incidentResolverRoles = "SECURITY,MANAGER";
+
+    @Column(name = "blacklist_manager_roles", length = 100)
+    @Builder.Default
+    private String blacklistManagerRoles = "SECURITY,MANAGER";
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

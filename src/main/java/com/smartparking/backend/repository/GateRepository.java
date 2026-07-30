@@ -10,4 +10,8 @@ import java.util.UUID;
 @Repository
 public interface GateRepository extends JpaRepository<Gate, UUID> {
     List<Gate> findByBuildingId(UUID buildingId);
+
+    List<Gate> findByZoneId(UUID zoneId);
+
+    List<Gate> findByIsActiveTrueAndGateTypeIn(List<Gate.GateType> gateTypes);
 }

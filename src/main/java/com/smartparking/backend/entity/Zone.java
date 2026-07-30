@@ -41,6 +41,9 @@ public class Zone {
     @Column(nullable = false)
     private Integer capacity = 0;
 
+    @Column(name = "zone_area")
+    private Double zoneArea; // Diện tích thực tế cấp cho zone (m²) — dùng để tính lại slot, null với zone tạo trước khi có tính năng này
+
     @Column(name = "current_count", nullable = false)
     private Integer currentCount = 0;
 
@@ -50,9 +53,6 @@ public class Zone {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ZoneStatus status = ZoneStatus.ACTIVE;
-
-    @Column(name = "distance_to_gate")
-    private Integer distanceToGate;
 
     public enum ZoneStatus {
         ACTIVE, FULL, MAINTENANCE, LOCKED

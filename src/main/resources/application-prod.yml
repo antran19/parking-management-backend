@@ -1,0 +1,44 @@
+## ===== PRODUCTION PROFILE =====
+## File này được load KHI VÀ CHỈ KHI chạy với: -Dspring.profiles.active=prod
+## Các giá trị ở đây OVERRIDE file application.yml (file gốc dùng cho local dev)
+## Cú pháp ${VARIABLE_NAME}: lấy giá trị từ biến môi trường (Railway sẽ inject)
+
+spring:
+  # ===== DATABASE (Railway PostgreSQL) =====
+  datasource:
+    url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}
+    username: ${PGUSER:postgres}
+    password: ${PGPASSWORD:postgres}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+  # ===== TẮT REDIS (chưa dùng trên production) =====
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+  data:
+    redis:
+      host: none
+      port: 0
+
+# ===== SERVER =====
+server:
+  port: ${PORT:8080}
+
+# ===== JWT (secret mạnh, lấy từ env var) =====
+jwt:
+  secret: ${JWT_SECRET:smartparking-prod-secret-change-this}
+
+# ===== VNPAY =====
+vnpay:
+  return-url: ${VNPAY_RETURN_URL:http://localhost:5173/driver/payment-return}
+
+# ===== LOGGING (giảm log trên production) =====
+logging:
+  level:
+    com.smartparking: INFO
+    org.springframework.security: WARN
+    org.springframework.web.socket: WARN
+    org.hibernate.SQL: WARN

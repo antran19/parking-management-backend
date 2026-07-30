@@ -69,6 +69,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(response);
     }
 
+    // ===== Invalid Argument / Enum Errors (400 thay vì để rơi xuống 500) =====
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        ErrorResponse response = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Bad Request")
+                .message(ex.getMessage() != null ? ex.getMessage() : "Invalid argument")
+                .build();
+        return ResponseEntity.badRequest().body(response);
+    }
+
     // ===== General Errors =====
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneral(Exception ex) {

@@ -1,4 +1,4 @@
-# Smart Parking Team API Contract
+SS# Smart Parking Team API Contract
 
 Tài liệu này là hợp đồng API chung cho `ParkingSystem_Team`. Leader định nghĩa route, chuẩn response và phạm vi role; từng thành viên implement full FE + BE theo role được giao.
 

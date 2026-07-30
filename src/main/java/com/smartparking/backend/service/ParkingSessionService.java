@@ -68,6 +68,7 @@ public class ParkingSessionService {
     private final ZoneRepository zoneRepository;
     private final UserLicensePlateRepository userLicensePlateRepository;
     private final UniqueCodeGeneratorService uniqueCodeGeneratorService;
+    private final jakarta.persistence.EntityManager entityManager;
 
     public ParkingSessionService(
             ParkingSessionRepository sessionRepository,
@@ -86,7 +87,8 @@ public class ParkingSessionService {
             EmergencyEventRepository emergencyEventRepository,
             ZoneRepository zoneRepository,
             UserLicensePlateRepository userLicensePlateRepository,
-            UniqueCodeGeneratorService uniqueCodeGeneratorService) {
+            UniqueCodeGeneratorService uniqueCodeGeneratorService,
+            jakarta.persistence.EntityManager entityManager) {
         this.sessionRepository = sessionRepository;
         this.zoneSuggestionService = zoneSuggestionService;
         this.pricingService = pricingService;
@@ -104,6 +106,7 @@ public class ParkingSessionService {
         this.zoneRepository = zoneRepository;
         this.userLicensePlateRepository = userLicensePlateRepository;
         this.uniqueCodeGeneratorService = uniqueCodeGeneratorService;
+        this.entityManager = entityManager;
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -414,6 +417,15 @@ public class ParkingSessionService {
             Zone suggested = zoneSuggestionService.suggestZone(vehicleType);
             assignedZone = zoneRepository.findByIdForUpdate(suggested.getId())
                     .orElseThrow(() -> new ResourceNotFoundException("Phân khu gợi ý không tồn tại"));
+            
+            // Force Hibernate to refresh the entity state from DB (bypassing the First-Level Cache stale data)
+            entityManager.refresh(assignedZone);
+            
+            // Re-check capacity after pessimistic lock is acquired to prevent concurrency overflow
+            int occupied = assignedZone.getCurrentCount() + assignedZone.getReservedCount();
+            if (occupied >= assignedZone.getCapacity()) {
+                throw new BusinessException("Phân khu gợi ý " + assignedZone.getZoneName() + " đã đầy hoặc không còn chỗ trống.");
+            }
         }
 
         // Xác định phân loại Driver

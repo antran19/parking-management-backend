@@ -528,6 +528,12 @@ public class AdminManagementController {
             @RequestBody Map<String, Object> body) {
         ParkingPass pass = parkingPassRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Vé định kỳ không tồn tại"));
+        // Vé đang hoạt động (đã đăng ký & còn hạn) là "hợp đồng đã chốt" → KHÔNG cho sửa gì.
+        // Muốn thay đổi: dùng Gia hạn (kéo dài) hoặc Hủy (→ CANCELLED, có thể kích hoạt lại).
+        if (pass.getStatus() == ParkingPass.PassStatus.ACTIVE) {
+            throw new BusinessException(
+                    "Vé đang hoạt động không được chỉnh sửa. Dùng chức năng Gia hạn hoặc Hủy.");
+        }
         if (body.containsKey("userId"))
             pass.setUser(userRepository.findById(uuid(body, "userId"))
                     .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại")));
@@ -566,9 +572,35 @@ public class AdminManagementController {
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @Transactional
     @Operation(summary = "Delete parking pass")
-    public ResponseEntity<ApiResponse<String>> deletePass(@PathVariable UUID id) {
-        parkingPassRepository.deleteById(id);
-        return ResponseEntity.ok(ApiResponse.success("Đã xóa vé định kỳ", id.toString()));
+    public ResponseEntity<ApiResponse<Map<String, Object>>> deletePass(@PathVariable UUID id) {
+        ParkingPass pass = parkingPassRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Vé định kỳ không tồn tại"));
+        // KHÔNG xóa vật lý khỏi DB — đây là thao tác "Hủy": chỉ chuyển sang CANCELLED,
+        // giữ nguyên record + các bản ghi Payment, và có thể kích hoạt lại về sau.
+        pass.setStatus(ParkingPass.PassStatus.CANCELLED);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Đã hủy vé định kỳ", passMap(parkingPassRepository.save(pass))));
+    }
+
+    @PostMapping("/parking-passes/{id}/reactivate")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @Transactional
+    @Operation(summary = "Reactivate a cancelled parking pass")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> reactivatePass(@PathVariable UUID id) {
+        ParkingPass pass = parkingPassRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Vé định kỳ không tồn tại"));
+        if (pass.getStatus() != ParkingPass.PassStatus.CANCELLED) {
+            throw new BusinessException("Chỉ có thể kích hoạt lại vé đang ở trạng thái đã hủy");
+        }
+        // Vé đã hết hạn theo ngày thì không kích hoạt lại (sẽ thành ACTIVE mà đã quá hạn) —
+        // hướng admin sang Gia hạn để cộng thêm thời gian.
+        if (pass.getEndDate() != null && pass.getEndDate().isBefore(LocalDate.now())) {
+            throw new BusinessException(
+                    "Vé đã hết hạn theo ngày. Hãy dùng chức năng Gia hạn thay vì kích hoạt lại.");
+        }
+        pass.setStatus(ParkingPass.PassStatus.ACTIVE);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Đã kích hoạt lại vé định kỳ", passMap(parkingPassRepository.save(pass))));
     }
 
     @PostMapping("/parking-passes/{id}/renew")
@@ -1100,7 +1132,11 @@ public class AdminManagementController {
         if (error != null) {
             throw new BusinessException(error);
         }
-        return plate;
+        // Chuẩn hóa biển số (bỏ dấu gạch/chấm) trước khi lưu để KHỚP với biển đã normalize
+        // lúc check-in (ParkingSessionService dùng findByLicensePlateAndBuildingAndStatus so
+        // khớp chính xác chuỗi). Nếu lưu "93E1-14468" mà check-in tra "93E114468" thì vé tháng
+        // sẽ không được nhận diện và xe bị tính vé lượt.
+        return LicensePlateUtil.normalize(plate);
     }
 
     private Map<String, Object> passMap(ParkingPass pass) {

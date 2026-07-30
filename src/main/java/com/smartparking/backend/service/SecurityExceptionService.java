@@ -172,10 +172,6 @@ public class SecurityExceptionService {
         exceptionLog.setResolution(resolution);
         exceptionLog.setResolutionImageUrls(resolutionImageUrls);
 
-        if (resolution != null && !resolution.isBlank()) {
-            String existingDesc = exceptionLog.getDescription() == null ? "" : exceptionLog.getDescription() + "\n\n";
-            exceptionLog.setDescription(existingDesc + "=== GHI CHÚ GIẢI QUYẾT ===\n" + resolution);
-        }
 
         ExceptionLog saved = exceptionLogRepository.save(exceptionLog);
         return mapToResponse(saved);

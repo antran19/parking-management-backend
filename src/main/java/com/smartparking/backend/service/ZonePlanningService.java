@@ -19,7 +19,8 @@ import java.util.stream.Collectors;
 /**
  * Service quy hoạch zone theo diện tích tầng — thay cho việc admin gõ tay số
  * capacity của zone. Diện tích mỗi zone được chia trực tiếp từ tổng diện tích
- * tầng (floorArea), và số slot mỗi zone = floor(diện tích zone / VehicleType.slotAreaSqm).
+ * tầng (floorArea), và số slot mỗi zone = floor(diện tích zone /
+ * VehicleType.slotAreaSqm).
  *
  * Quy tắc "tầng tổng hợp": 1 tầng chỉ được kết hợp nhiều loại xe nếu TẤT CẢ
  * các loại đó có VehicleType.mixable = true (mặc định Xe máy/Xe đạp — admin có
@@ -35,24 +36,27 @@ public class ZonePlanningService {
     private final GateRepository gateRepository;
 
     public ZonePlanningService(ZoneRepository zoneRepository, FloorRepository floorRepository,
-                                VehicleTypeRepository vehicleTypeRepository, GateRepository gateRepository) {
+            VehicleTypeRepository vehicleTypeRepository, GateRepository gateRepository) {
         this.zoneRepository = zoneRepository;
         this.floorRepository = floorRepository;
         this.vehicleTypeRepository = vehicleTypeRepository;
         this.gateRepository = gateRepository;
     }
 
-    private record PlannedZone(VehicleType vehicleType, String zoneCode, double area, int capacity) {}
+    private record PlannedZone(VehicleType vehicleType, String zoneCode, double area, int capacity) {
+    }
 
-    private record AllocationInput(VehicleType vehicleType, double area, int zoneCount) {}
+    private record AllocationInput(VehicleType vehicleType, double area, int zoneCount) {
+    }
 
     public Map<String, Object> getFloorCapacitySummary(UUID floorId) {
         Floor floor = requireFloor(floorId);
         List<Zone> existingZones = zoneRepository.findAllByFloorId(floorId);
 
-        double usableArea = usableArea(floor);
-        double allocatedArea = allocatedArea(existingZones);
-        double remainingArea = Math.max(0, usableArea - allocatedArea);
+        double usableArea = usableArea(floor); // diện tích sử dụng = floorArea
+        double allocatedArea = allocatedArea(existingZones); // diện tích đã phân bổ = tổng diện tích các zone đã có
+        double remainingArea = Math.max(0, usableArea - allocatedArea); // diện tích còn lại = diện tích sử dụng - diện
+                                                                        // tích đã phân bổ
 
         Set<String> existingTypeNames = existingZones.stream()
                 .map(z -> z.getVehicleType().getName())
@@ -86,7 +90,10 @@ public class ZonePlanningService {
         return result;
     }
 
-    /** Tính thử, không lưu DB. Trả về valid=false kèm lý do thay vì ném lỗi, để UI preview mượt khi admin đang chỉnh input. */
+    /**
+     * Tính thử, không lưu DB. Trả về valid=false kèm lý do thay vì ném lỗi, để UI
+     * preview mượt khi admin đang chỉnh input.
+     */
     public Map<String, Object> previewGeneratedZones(UUID floorId, List<Map<String, Object>> allocations) {
         Floor floor = requireFloor(floorId);
         List<Zone> existingZones = zoneRepository.findAllByFloorId(floorId);
@@ -136,7 +143,8 @@ public class ZonePlanningService {
             throw new BusinessException("Cần ít nhất 1 loại xe để quy hoạch zone");
         }
         if (floor.getFloorArea() == null || floor.getFloorArea() <= 0) {
-            throw new BusinessException("Tầng chưa có diện tích, vui lòng cập nhật diện tích tầng trước khi quy hoạch zone");
+            throw new BusinessException(
+                    "Tầng chưa có diện tích, vui lòng cập nhật diện tích tầng trước khi quy hoạch zone");
         }
 
         double usableArea = usableArea(floor);
@@ -164,7 +172,9 @@ public class ZonePlanningService {
             } else if (areaPercent != null && areaPercent > 0) {
                 area = remainingArea * (areaPercent / 100.0);
             } else {
-                throw new BusinessException("Cần chỉ định diện tích (area) hoặc phần trăm diện tích (areaPercent) cho loại xe " + vt.getName());
+                throw new BusinessException(
+                        "Cần chỉ định diện tích (area) hoặc phần trăm diện tích (areaPercent) cho loại xe "
+                                + vt.getName());
             }
 
             int zoneCount = intVal(raw, "zoneCount", 1);
@@ -176,7 +186,8 @@ public class ZonePlanningService {
             byType.put(vehicleTypeId, new AllocationInput(vt, area, zoneCount));
         }
 
-        // Luật gộp tầng: toàn bộ loại xe (đã có trên tầng + mới thêm) phải là 1 loại duy nhất,
+        // Luật gộp tầng: toàn bộ loại xe (đã có trên tầng + mới thêm) phải là 1 loại
+        // duy nhất,
         // hoặc TẤT CẢ đều có mixable = true (cho phép gộp tầng tổng hợp).
         Map<UUID, VehicleType> existingTypes = new LinkedHashMap<>();
         existingZones.forEach(z -> existingTypes.put(z.getVehicleType().getId(), z.getVehicleType()));
@@ -191,8 +202,9 @@ public class ZonePlanningService {
             String newNames = newTypes.values().stream().map(VehicleType::getName)
                     .collect(Collectors.joining(", "));
             if (existingTypes.isEmpty()) {
-                throw new BusinessException("Chỉ được phép kết hợp các loại xe cho phép gộp tầng (vd Xe máy + Xe đạp) trong 1 tầng — không thể tạo đồng thời "
-                        + newNames);
+                throw new BusinessException(
+                        "Chỉ được phép kết hợp các loại xe cho phép gộp tầng (vd Xe máy + Xe đạp) trong 1 tầng — không thể tạo đồng thời "
+                                + newNames);
             }
             String existingNames = existingTypes.values().stream().map(VehicleType::getName)
                     .collect(Collectors.joining(", "));
@@ -234,7 +246,7 @@ public class ZonePlanningService {
     }
 
     private Map<String, Object> buildPreviewResponse(Floor floor, List<Zone> existingZones,
-                                                       List<PlannedZone> planned, String errorMessage) {
+            List<PlannedZone> planned, String errorMessage) {
         double usableArea = usableArea(floor);
         double allocatedArea = allocatedArea(existingZones);
         double plannedArea = planned.stream().mapToDouble(PlannedZone::area).sum();
@@ -260,13 +272,20 @@ public class ZonePlanningService {
         return result;
     }
 
-    /** Mỗi zone quy hoạch mới phải có sẵn 1 cặp cổng vào/ra, nếu không sẽ không check-in/check-out được
-     *  (ZonePlanningService trước đây chỉ tạo Zone, để lại cổng cho admin tự thêm tay ở tab Cổng kiểm soát —
-     *  dễ quên, khiến zone tạo ra không dùng được thật). Đặt tên theo đúng quy ước cổng đã seed sẵn. */
+    /**
+     * Mỗi zone quy hoạch mới phải có sẵn 1 cặp cổng vào/ra, nếu không sẽ không
+     * check-in/check-out được
+     * (ZonePlanningService trước đây chỉ tạo Zone, để lại cổng cho admin tự thêm
+     * tay ở tab Cổng kiểm soát —
+     * dễ quên, khiến zone tạo ra không dùng được thật). Đặt tên theo đúng quy ước
+     * cổng đã seed sẵn.
+     */
     private java.util.stream.Stream<Gate> buildZoneGates(Zone zone) {
         String floorName = zone.getFloor().getFloorName();
-        // gate_code giới hạn varchar(20) — cắt bớt tên tầng để "GATE-{floor}-{zone}-OUT" luôn vừa,
-        // bất kể admin đặt tên tầng dài bao nhiêu (khác với B1/T1 ngắn gọn lúc seed dữ liệu mẫu).
+        // gate_code giới hạn varchar(20) — cắt bớt tên tầng để
+        // "GATE-{floor}-{zone}-OUT" luôn vừa,
+        // bất kể admin đặt tên tầng dài bao nhiêu (khác với B1/T1 ngắn gọn lúc seed dữ
+        // liệu mẫu).
         String floorPart = floorName.length() > 8 ? floorName.substring(0, 8) : floorName;
         String baseCode = ("GATE-" + floorPart + "-" + zone.getZoneCode()).toUpperCase();
         String label = floorName + "-" + zone.getZoneCode() + " (" + zone.getVehicleType().getName() + ")";
@@ -291,9 +310,14 @@ public class ZonePlanningService {
         return java.util.stream.Stream.of(entry, exit);
     }
 
-    /** Sửa sức chứa 1 zone đã có — tính lại zoneArea tương ứng (capacity × slotAreaSqm) và
-     *  chặn nếu vượt quá diện tích tầng còn trống, để tab "Phân khu đỗ xe" không thể tự ý
-     *  đặt capacity lệch khỏi diện tích thật mà tab "Cấu hình hạ tầng" đang theo dõi. */
+    /**
+     * Sửa sức chứa 1 zone đã có — tính lại zoneArea tương ứng (capacity ×
+     * slotAreaSqm) và
+     * chặn nếu vượt quá diện tích tầng còn trống, để tab "Phân khu đỗ xe" không thể
+     * tự ý
+     * đặt capacity lệch khỏi diện tích thật mà tab "Cấu hình hạ tầng" đang theo
+     * dõi.
+     */
     @Transactional
     public Zone resizeZoneCapacity(UUID zoneId, int newCapacity) {
         Zone zone = zoneRepository.findById(zoneId)
@@ -356,7 +380,8 @@ public class ZonePlanningService {
             String code = z.getZoneCode();
             if (code != null && code.length() == 1) {
                 char c = Character.toUpperCase(code.charAt(0));
-                if (c >= 'A' && c <= 'Z' && c > max) max = c;
+                if (c >= 'A' && c <= 'Z' && c > max)
+                    max = c;
             }
         }
         return (char) (max + 1);
@@ -368,7 +393,8 @@ public class ZonePlanningService {
 
     private UUID uuid(Map<String, Object> body, String key) {
         Object v = body.get(key);
-        if (v == null) return null;
+        if (v == null)
+            return null;
         try {
             return UUID.fromString(String.valueOf(v));
         } catch (IllegalArgumentException e) {
@@ -378,7 +404,8 @@ public class ZonePlanningService {
 
     private Double doubleVal(Map<String, Object> body, String key) {
         Object v = body.get(key);
-        if (v == null || String.valueOf(v).isBlank()) return null;
+        if (v == null || String.valueOf(v).isBlank())
+            return null;
         try {
             return Double.parseDouble(String.valueOf(v));
         } catch (NumberFormatException e) {
@@ -388,7 +415,8 @@ public class ZonePlanningService {
 
     private int intVal(Map<String, Object> body, String key, int defaultVal) {
         Object v = body.get(key);
-        if (v == null || String.valueOf(v).isBlank()) return defaultVal;
+        if (v == null || String.valueOf(v).isBlank())
+            return defaultVal;
         try {
             return (int) Double.parseDouble(String.valueOf(v));
         } catch (NumberFormatException e) {

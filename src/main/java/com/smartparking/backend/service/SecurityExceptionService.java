@@ -134,6 +134,12 @@ public class SecurityExceptionService {
             exceptionLog.setImageUrls(request.getImageUrls());
         }
 
+        if (request.getHandledByUserId() != null) {
+            User handledBy = userRepository.findById(request.getHandledByUserId())
+                    .orElseThrow(() -> new BusinessException("Người xử lý không tồn tại"));
+            exceptionLog.setHandledBy(handledBy);
+        }
+
         if (request.getStatus() != null) {
             ExceptionLog.ExceptionStatus status = request.getStatus();
             exceptionLog.setStatus(status);
@@ -172,10 +178,6 @@ public class SecurityExceptionService {
         exceptionLog.setResolution(resolution);
         exceptionLog.setResolutionImageUrls(resolutionImageUrls);
 
-        if (resolution != null && !resolution.isBlank()) {
-            String existingDesc = exceptionLog.getDescription() == null ? "" : exceptionLog.getDescription() + "\n\n";
-            exceptionLog.setDescription(existingDesc + "=== GHI CHÚ GIẢI QUYẾT ===\n" + resolution);
-        }
 
         ExceptionLog saved = exceptionLogRepository.save(exceptionLog);
         return mapToResponse(saved);

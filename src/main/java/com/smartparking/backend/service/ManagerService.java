@@ -265,21 +265,33 @@ public class ManagerService {
 
         List<Zone> zones = zoneRepository.findAllByBuildingId(id);
 
-        int totalCapacity = zones.stream()
-                .mapToInt(Zone::getCapacity)
-                .sum();
+        int totalCapacity = 0;
+        int totalOccupied = 0;
 
-        int totalOccupied = zones.stream()
-                .mapToInt(z -> z.getCurrentCount() + z.getReservedCount())
-                .sum();
+        for (Zone z : zones) {
+            int capacity = z.getCapacity() != null ? z.getCapacity() : 0;
+            totalCapacity += capacity;
+
+            long activeCount = parkingSessionRepository.countByZoneIdAndStatus(z.getId(), ParkingSession.SessionStatus.ACTIVE);
+            int curCount = (int) activeCount;
+            if (z.getCurrentCount() == null || z.getCurrentCount() != curCount) {
+                z.setCurrentCount(curCount);
+                if (capacity > 0 && curCount + z.getReservedCount() >= capacity) {
+                    z.setStatus(Zone.ZoneStatus.FULL);
+                } else if (z.getStatus() == Zone.ZoneStatus.FULL) {
+                    z.setStatus(Zone.ZoneStatus.ACTIVE);
+                }
+                zoneRepository.save(z);
+            }
+            int resCount = z.getReservedCount() != null ? z.getReservedCount() : 0;
+            totalOccupied += curCount + resCount;
+        }
 
         int available = Math.max(0, totalCapacity - totalOccupied);
 
         double percent = totalCapacity > 0
                 ? Math.round((totalOccupied * 100.0 / totalCapacity) * 10.0) / 10.0
                 : 0.0;
-
-        List<Floor> floors = floorRepository.findByBuildingId(id);
 
         return BuildingOccupancyResponse.builder()
                 .id(id.toString())
@@ -299,13 +311,27 @@ public class ManagerService {
 
         List<Zone> zones = zoneRepository.findAllByFloorId(id);
 
-        int totalCapacity = zones.stream()
-                .mapToInt(Zone::getCapacity)
-                .sum();
+        int totalCapacity = 0;
+        int totalOccupied = 0;
 
-        int totalOccupied = zones.stream()
-                .mapToInt(z -> z.getCurrentCount() + z.getReservedCount())
-                .sum();
+        for (Zone z : zones) {
+            int capacity = z.getCapacity() != null ? z.getCapacity() : 0;
+            totalCapacity += capacity;
+
+            long activeCount = parkingSessionRepository.countByZoneIdAndStatus(z.getId(), ParkingSession.SessionStatus.ACTIVE);
+            int curCount = (int) activeCount;
+            if (z.getCurrentCount() == null || z.getCurrentCount() != curCount) {
+                z.setCurrentCount(curCount);
+                if (capacity > 0 && curCount + z.getReservedCount() >= capacity) {
+                    z.setStatus(Zone.ZoneStatus.FULL);
+                } else if (z.getStatus() == Zone.ZoneStatus.FULL) {
+                    z.setStatus(Zone.ZoneStatus.ACTIVE);
+                }
+                zoneRepository.save(z);
+            }
+            int resCount = z.getReservedCount() != null ? z.getReservedCount() : 0;
+            totalOccupied += curCount + resCount;
+        }
 
         int available = Math.max(0, totalCapacity - totalOccupied);
 

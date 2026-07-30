@@ -32,13 +32,16 @@ public class PublicInfoController {
     private final ZoneRepository zoneRepository;
     private final PricingRuleRepository pricingRuleRepository;
     private final BuildingRepository buildingRepository;
+    private final ParkingSessionRepository parkingSessionRepository;
 
     public PublicInfoController(ZoneRepository zoneRepository,
             PricingRuleRepository pricingRuleRepository,
-            BuildingRepository buildingRepository) {
+            BuildingRepository buildingRepository,
+            ParkingSessionRepository parkingSessionRepository) {
         this.zoneRepository = zoneRepository;
         this.pricingRuleRepository = pricingRuleRepository;
         this.buildingRepository = buildingRepository;
+        this.parkingSessionRepository = parkingSessionRepository;
     }
 
     /**
@@ -80,7 +83,12 @@ public class PublicInfoController {
             Map<String, Integer> fs = floorSummary.get(floorName);
 
             int cap = z.getCapacity() != null ? z.getCapacity() : 0;
-            int cur = z.getCurrentCount() != null ? z.getCurrentCount() : 0;
+            long activeCount = parkingSessionRepository.countByZoneIdAndStatus(z.getId(), com.smartparking.backend.entity.ParkingSession.SessionStatus.ACTIVE);
+            int cur = (int) activeCount;
+            if (z.getCurrentCount() == null || z.getCurrentCount() != cur) {
+                z.setCurrentCount(cur);
+                zoneRepository.save(z);
+            }
             int res = z.getReservedCount() != null ? z.getReservedCount() : 0;
 
             fs.merge("capacity", cap, Integer::sum);

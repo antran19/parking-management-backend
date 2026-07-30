@@ -163,7 +163,7 @@ public class ReservationService {
 
         LocalDateTime reservedTo = request.getReservedTo() != null
                 ? request.getReservedTo()
-                : reservedFrom.plusMinutes(30);
+                : reservedFrom.plusHours(1);
 
         if (!reservedTo.isAfter(reservedFrom)) {
             throw new BusinessException("Thời gian kết thúc phải sau thời gian bắt đầu");

@@ -134,6 +134,12 @@ public class SecurityExceptionService {
             exceptionLog.setImageUrls(request.getImageUrls());
         }
 
+        if (request.getHandledByUserId() != null) {
+            User handledBy = userRepository.findById(request.getHandledByUserId())
+                    .orElseThrow(() -> new BusinessException("Người xử lý không tồn tại"));
+            exceptionLog.setHandledBy(handledBy);
+        }
+
         if (request.getStatus() != null) {
             ExceptionLog.ExceptionStatus status = request.getStatus();
             exceptionLog.setStatus(status);

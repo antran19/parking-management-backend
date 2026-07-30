@@ -153,6 +153,8 @@ public class SecurityController {
         String resolution = null;
         if (body.get("resolution") != null) {
             resolution = String.valueOf(body.get("resolution"));
+        } else if (body.get("resolutionNote") != null) {
+            resolution = String.valueOf(body.get("resolutionNote"));
         }
 
         List<String> resolutionImageUrls = null;
